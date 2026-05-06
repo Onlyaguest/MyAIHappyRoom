@@ -17,6 +17,7 @@ agents-state.json
 runtime-config.json
 presentation-board.json
 role-skins.json
+role-skin-library.json
 one-click-summaries.json
 *.log
 *.out
@@ -32,6 +33,7 @@ backend.log
 assets/bg-history/
 assets/home-favorites/
 uploads/presentation-board/
+uploads/role-skins/
 frontend/office_bg.png
 frontend/*.bak
 layers/

@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import uuid
 from pathlib import Path
 from werkzeug.utils import secure_filename
 from security_utils import is_production_mode, is_strong_secret, is_strong_drawer_pass
@@ -63,6 +64,12 @@ HOME_FAVORITES_MAX = 30
 ASSET_POSITIONS_FILE = os.path.join(ROOT_DIR, "asset-positions.json")
 TEAM_STATUS_FILE = os.path.join(ROOT_DIR, "team-status.json")
 ROLE_SKINS_FILE = os.path.join(ROOT_DIR, "role-skins.json")
+ROLE_SKIN_LIBRARY_FILE = os.path.join(ROOT_DIR, "role-skin-library.json")
+ROLE_SKIN_UPLOAD_DIR = os.path.join(ROOT_DIR, "uploads", "role-skins")
+ROLE_SKIN_ALLOWED_EXTS = {".png", ".jpg", ".jpeg"}
+ROLE_SKIN_MAX_UPLOAD_BYTES = int(os.getenv("ROLE_SKIN_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
+ROLE_SKIN_GRID_COLS = 8
+ROLE_SKIN_GRID_ROWS = 7
 ONE_CLICK_SUMMARIES_FILE = os.path.join(ROOT_DIR, "one-click-summaries.json")
 ONE_CLICK_SUMMARY_MAX_RECORDS = int(os.getenv("ONE_CLICK_SUMMARY_MAX_RECORDS", "30"))
 PRESENTATION_BOARD_FILE = os.path.join(ROOT_DIR, "presentation-board.json")
@@ -443,9 +450,45 @@ def save_team_status(roles):
 def _default_role_skins():
     now = datetime.now().isoformat()
     return [
-        {"roleId": "pm", "skin": "guest_anim_1", "avatar": "guest_anim_1", "animKey": "guest_anim_1", "updated_at": now},
-        {"roleId": "builder", "skin": "guest_anim_2", "avatar": "guest_anim_2", "animKey": "guest_anim_2", "updated_at": now},
-        {"roleId": "reviewer", "skin": "guest_anim_3", "avatar": "guest_anim_3", "animKey": "guest_anim_3", "updated_at": now},
+        {
+            "roleId": "pm",
+            "skin": "guest_anim_1",
+            "avatar": "guest_anim_1",
+            "animKey": "guest_anim_1",
+            "sourceType": "builtin",
+            "skinId": "",
+            "sheetUrl": "",
+            "frameWidth": 32,
+            "frameHeight": 32,
+            "validation": {"errors": [], "warnings": []},
+            "updated_at": now,
+        },
+        {
+            "roleId": "builder",
+            "skin": "guest_anim_2",
+            "avatar": "guest_anim_2",
+            "animKey": "guest_anim_2",
+            "sourceType": "builtin",
+            "skinId": "",
+            "sheetUrl": "",
+            "frameWidth": 32,
+            "frameHeight": 32,
+            "validation": {"errors": [], "warnings": []},
+            "updated_at": now,
+        },
+        {
+            "roleId": "reviewer",
+            "skin": "guest_anim_3",
+            "avatar": "guest_anim_3",
+            "animKey": "guest_anim_3",
+            "sourceType": "builtin",
+            "skinId": "",
+            "sheetUrl": "",
+            "frameWidth": 32,
+            "frameHeight": 32,
+            "validation": {"errors": [], "warnings": []},
+            "updated_at": now,
+        },
     ]
 
 
@@ -458,9 +501,137 @@ def _normalize_skin_key(value, fallback):
     return safe or fallback
 
 
+def _sanitize_skin_id(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    return re.sub(r"[^a-z0-9_\-]", "", raw)
+
+
+def _normalize_validation_result(raw):
+    data = raw if isinstance(raw, dict) else {}
+    errors = data.get("errors") if isinstance(data.get("errors"), list) else []
+    warnings = data.get("warnings") if isinstance(data.get("warnings"), list) else []
+    return {
+        "errors": [str(x) for x in errors if str(x).strip()],
+        "warnings": [str(x) for x in warnings if str(x).strip()],
+    }
+
+
+def _normalize_role_skin_library_item(row):
+    if not isinstance(row, dict):
+        return None
+    skin_id = _sanitize_skin_id(row.get("skinId") or row.get("id"))
+    if not skin_id:
+        return None
+    file_name = secure_filename(str(row.get("fileName") or f"{skin_id}.png"))
+    file_url = str(row.get("fileUrl") or f"/role-skins/files/{file_name}").strip()
+    try:
+        source_width = max(1, int(row.get("sourceWidth") or 1))
+    except Exception:
+        source_width = 1
+    try:
+        source_height = max(1, int(row.get("sourceHeight") or 1))
+    except Exception:
+        source_height = 1
+    try:
+        frame_width = max(1, int(row.get("frameWidth") or 1))
+    except Exception:
+        frame_width = 1
+    try:
+        frame_height = max(1, int(row.get("frameHeight") or 1))
+    except Exception:
+        frame_height = 1
+    try:
+        grid_cols = max(1, int(row.get("gridCols") or ROLE_SKIN_GRID_COLS))
+    except Exception:
+        grid_cols = ROLE_SKIN_GRID_COLS
+    try:
+        grid_rows = max(1, int(row.get("gridRows") or ROLE_SKIN_GRID_ROWS))
+    except Exception:
+        grid_rows = ROLE_SKIN_GRID_ROWS
+    return {
+        "skinId": skin_id,
+        "name": str(row.get("name") or skin_id).strip() or skin_id,
+        "fileName": file_name,
+        "fileUrl": file_url,
+        "sourceWidth": source_width,
+        "sourceHeight": source_height,
+        "frameWidth": frame_width,
+        "frameHeight": frame_height,
+        "gridCols": grid_cols,
+        "gridRows": grid_rows,
+        "validation": _normalize_validation_result(row.get("validation")),
+        "created_at": str(row.get("created_at") or "").strip() or datetime.now().isoformat(),
+        "updated_at": str(row.get("updated_at") or "").strip() or datetime.now().isoformat(),
+    }
+
+
+def load_role_skin_library():
+    payload = None
+    if os.path.exists(ROLE_SKIN_LIBRARY_FILE):
+        try:
+            with open(ROLE_SKIN_LIBRARY_FILE, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            payload = None
+    rows = payload.get("items") if isinstance(payload, dict) else payload if isinstance(payload, list) else []
+    out = []
+    for row in rows:
+        item = _normalize_role_skin_library_item(row)
+        if item:
+            out.append(item)
+    return out
+
+
+def save_role_skin_library(items):
+    rows = []
+    for row in (items or []):
+        item = _normalize_role_skin_library_item(row)
+        if item:
+            rows.append(item)
+    with open(ROLE_SKIN_LIBRARY_FILE, "w", encoding="utf-8") as f:
+        json.dump({"items": rows}, f, ensure_ascii=False, indent=2)
+    return rows
+
+
+def _role_skin_uploaded_row(role_id, item, updated_at=None):
+    ts = str(updated_at or "").strip() or datetime.now().isoformat()
+    return {
+        "roleId": role_id,
+        "skin": item["skinId"],
+        "avatar": item["skinId"],
+        "animKey": item["skinId"],
+        "sourceType": "uploaded",
+        "skinId": item["skinId"],
+        "sheetUrl": item["fileUrl"],
+        "frameWidth": item["frameWidth"],
+        "frameHeight": item["frameHeight"],
+        "validation": item.get("validation") or {"errors": [], "warnings": []},
+        "updated_at": ts,
+    }
+
+
+def _role_skin_builtin_row(role_id, skin_key, updated_at=None):
+    ts = str(updated_at or "").strip() or datetime.now().isoformat()
+    return {
+        "roleId": role_id,
+        "skin": skin_key,
+        "avatar": skin_key,
+        "animKey": skin_key,
+        "sourceType": "builtin",
+        "skinId": "",
+        "sheetUrl": "",
+        "frameWidth": 32,
+        "frameHeight": 32,
+        "validation": {"errors": [], "warnings": []},
+        "updated_at": ts,
+    }
+
+
 def load_role_skins():
     defaults = _default_role_skins()
     by_default = {r["roleId"]: r for r in defaults}
+    library = load_role_skin_library()
+    library_by_id = {row["skinId"]: row for row in library}
 
     payload = None
     if os.path.exists(ROLE_SKINS_FILE):
@@ -479,40 +650,132 @@ def load_role_skins():
             rid = str(row.get("roleId") or "").strip().lower()
             if rid not in by_default:
                 continue
-            base = dict(by_default[rid])
-            skin_key = _normalize_skin_key(row.get("animKey") or row.get("avatar") or row.get("skin"), base["skin"])
-            base.update({
-                "skin": skin_key,
-                "avatar": skin_key,
-                "animKey": skin_key,
-                "updated_at": str(row.get("updated_at") or "").strip() or datetime.now().isoformat(),
-            })
-            merged[rid] = base
+            fallback = by_default[rid]
+            skin_key = _normalize_skin_key(row.get("animKey") or row.get("avatar") or row.get("skin"), fallback["skin"])
+            skin_id = _sanitize_skin_id(row.get("skinId") or skin_key)
+            source_type = str(row.get("sourceType") or "").strip().lower()
+            updated_at = str(row.get("updated_at") or "").strip() or datetime.now().isoformat()
+
+            if skin_id and (source_type == "uploaded" or skin_id in library_by_id):
+                item = library_by_id.get(skin_id)
+                if item:
+                    merged[rid] = _role_skin_uploaded_row(rid, item, updated_at=updated_at)
+                    continue
+
+            merged[rid] = _role_skin_builtin_row(rid, skin_key, updated_at=updated_at)
 
     return [merged.get(d["roleId"], d) for d in defaults]
 
 
 def save_role_skins(rows):
     defaults = {r["roleId"]: r for r in _default_role_skins()}
+    library = load_role_skin_library()
+    library_by_id = {row["skinId"]: row for row in library}
     merged = {}
+
     for row in (rows or []):
         if not isinstance(row, dict):
             continue
         rid = str(row.get("roleId") or "").strip().lower()
         if rid not in defaults:
             continue
-        base = dict(defaults[rid])
-        skin_key = _normalize_skin_key(row.get("animKey") or row.get("avatar") or row.get("skin"), base["skin"])
-        base["skin"] = skin_key
-        base["avatar"] = skin_key
-        base["animKey"] = skin_key
-        base["updated_at"] = str(row.get("updated_at") or "").strip() or datetime.now().isoformat()
-        merged[rid] = base
+        fallback = defaults[rid]
+        updated_at = str(row.get("updated_at") or "").strip() or datetime.now().isoformat()
+
+        skin_key = _normalize_skin_key(row.get("animKey") or row.get("avatar") or row.get("skin"), fallback["skin"])
+        skin_id = _sanitize_skin_id(row.get("skinId") or skin_key)
+        source_type = str(row.get("sourceType") or "").strip().lower()
+
+        if skin_id and (source_type == "uploaded" or skin_id in library_by_id):
+            item = library_by_id.get(skin_id)
+            if item:
+                merged[rid] = _role_skin_uploaded_row(rid, item, updated_at=updated_at)
+                continue
+
+        merged[rid] = _role_skin_builtin_row(rid, skin_key, updated_at=updated_at)
 
     final_rows = [merged.get(rid, defaults[rid]) for rid in ("pm", "builder", "reviewer")]
     with open(ROLE_SKINS_FILE, "w", encoding="utf-8") as f:
         json.dump({"roles": final_rows}, f, ensure_ascii=False, indent=2)
     return final_rows
+
+
+def _is_near_magenta(r, g, b, a):
+    if a <= 10:
+        return True
+    return (abs(int(r) - 255) <= 18) and (int(g) <= 26) and (abs(int(b) - 255) <= 18)
+
+
+def _validate_and_chroma_role_skin(image):
+    img = image.convert("RGBA")
+    w, h = img.size
+    errors = []
+    warnings = []
+    info = {}
+
+    if w <= 0 or h <= 0:
+        errors.append("invalid image size")
+    if (w % ROLE_SKIN_GRID_COLS) != 0 or (h % ROLE_SKIN_GRID_ROWS) != 0:
+        errors.append(f"image size must be divisible by {ROLE_SKIN_GRID_COLS}x{ROLE_SKIN_GRID_ROWS}")
+
+    frame_w = (w // ROLE_SKIN_GRID_COLS) if ROLE_SKIN_GRID_COLS else 0
+    frame_h = (h // ROLE_SKIN_GRID_ROWS) if ROLE_SKIN_GRID_ROWS else 0
+    if frame_w <= 0 or frame_h <= 0:
+        errors.append("frame size is invalid")
+    elif frame_w != frame_h:
+        errors.append("frame must be square (frameWidth == frameHeight)")
+
+    try:
+        ratio = float(w) / float(h)
+        if abs(ratio - (ROLE_SKIN_GRID_COLS / ROLE_SKIN_GRID_ROWS)) > 0.02:
+            warnings.append("image ratio differs from expected 8:7")
+    except Exception:
+        pass
+
+    pixels = img.load()
+    total = max(1, w * h)
+    magenta_count = 0
+    border_count = 0
+    border_magenta = 0
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = pixels[x, y]
+            near_magenta = _is_near_magenta(r, g, b, a)
+            if near_magenta:
+                magenta_count += 1
+                pixels[x, y] = (255, 0, 255, 0)
+            if x == 0 or y == 0 or x == (w - 1) or y == (h - 1):
+                border_count += 1
+                if near_magenta:
+                    border_magenta += 1
+
+    magenta_ratio = magenta_count / float(total)
+    border_ratio = (border_magenta / float(border_count)) if border_count > 0 else 0.0
+    info["magentaPixelRatio"] = round(magenta_ratio, 4)
+    info["magentaBorderRatio"] = round(border_ratio, 4)
+
+    if magenta_ratio < 0.10:
+        errors.append("magenta background is too low; expected #ff00ff background")
+    elif magenta_ratio < 0.35:
+        warnings.append("magenta background ratio is low; check background purity")
+
+    if border_ratio < 0.75:
+        errors.append("image border should mostly be magenta background")
+    elif border_ratio < 0.92:
+        warnings.append("image border contains many non-magenta pixels")
+
+    validation = {
+        "errors": errors,
+        "warnings": warnings,
+        "info": info,
+        "gridCols": ROLE_SKIN_GRID_COLS,
+        "gridRows": ROLE_SKIN_GRID_ROWS,
+        "frameWidth": frame_w,
+        "frameHeight": frame_h,
+        "sourceWidth": w,
+        "sourceHeight": h,
+    }
+    return img, validation
 
 
 def load_one_click_summaries():
@@ -1633,8 +1896,27 @@ def get_role_skins():
     return jsonify({
         "ok": True,
         "roles": load_role_skins(),
+        "library": load_role_skin_library(),
         "updated_at": datetime.now().isoformat(),
     })
+
+
+def _build_role_skin_row(rid, payload, current_row, library_by_id):
+    now = datetime.now().isoformat()
+    row = payload if isinstance(payload, dict) else {}
+    source_type = str(row.get("sourceType") or "").strip().lower()
+    requested_skin_id = _sanitize_skin_id(row.get("skinId") or "")
+    requested_anim_key = _normalize_skin_key(row.get("animKey") or row.get("avatar") or row.get("skin"), "")
+    candidate_skin_id = requested_skin_id or _sanitize_skin_id(requested_anim_key)
+    item = library_by_id.get(candidate_skin_id) if candidate_skin_id else None
+
+    if source_type == "uploaded" or item:
+        if not item:
+            raise ValueError("uploaded skinId not found in library")
+        return _role_skin_uploaded_row(rid, item, updated_at=now)
+
+    skin_key = requested_anim_key or str(current_row.get("skin") or "").strip() or _default_role_skins()[0]["skin"]
+    return _role_skin_builtin_row(rid, skin_key, updated_at=now)
 
 
 @app.route("/role-skins", methods=["POST"])
@@ -1645,6 +1927,8 @@ def set_role_skins():
             return jsonify({"ok": False, "msg": "invalid json"}), 400
 
         current = {r.get("roleId"): r for r in load_role_skins()}
+        library = load_role_skin_library()
+        library_by_id = {row.get("skinId"): row for row in library}
 
         if isinstance(data.get("roles"), list):
             for row in data.get("roles"):
@@ -1653,32 +1937,156 @@ def set_role_skins():
                 rid = str(row.get("roleId") or "").strip().lower()
                 if rid not in {"pm", "builder", "reviewer"}:
                     continue
-                skin_key = _normalize_skin_key(row.get("animKey") or row.get("avatar") or row.get("skin"), current[rid]["skin"])
-                current[rid] = {
-                    "roleId": rid,
-                    "skin": skin_key,
-                    "avatar": skin_key,
-                    "animKey": skin_key,
-                    "updated_at": datetime.now().isoformat(),
-                }
+                current[rid] = _build_role_skin_row(rid, row, current[rid], library_by_id)
             saved = save_role_skins([current.get("pm"), current.get("builder"), current.get("reviewer")])
-            return jsonify({"ok": True, "roles": saved})
+            return jsonify({"ok": True, "roles": saved, "library": library})
 
         rid = str(data.get("roleId") or "").strip().lower()
         if rid not in {"pm", "builder", "reviewer"}:
             return jsonify({"ok": False, "msg": "roleId must be pm/builder/reviewer"}), 400
-        skin_key = _normalize_skin_key(data.get("animKey") or data.get("avatar") or data.get("skin"), current[rid]["skin"])
-        current[rid] = {
-            "roleId": rid,
-            "skin": skin_key,
-            "avatar": skin_key,
-            "animKey": skin_key,
-            "updated_at": datetime.now().isoformat(),
-        }
+        current[rid] = _build_role_skin_row(rid, data, current[rid], library_by_id)
         saved = save_role_skins([current.get("pm"), current.get("builder"), current.get("reviewer")])
-        return jsonify({"ok": True, "role": current[rid], "roles": saved})
+        return jsonify({"ok": True, "role": current[rid], "roles": saved, "library": library})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/role-skins/upload", methods=["POST"])
+def upload_role_skin():
+    if Image is None:
+        return jsonify({"ok": False, "msg": "Pillow is required for skin upload"}), 500
+    try:
+        f = request.files.get("file")
+        if not f:
+            return jsonify({"ok": False, "msg": "missing file"}), 400
+
+        role_id = str(request.form.get("roleId") or "").strip().lower()
+        apply_to_role = str(request.form.get("apply") or "0").strip().lower() in {"1", "true", "yes", "on"}
+        if apply_to_role and role_id not in {"pm", "builder", "reviewer"}:
+            return jsonify({"ok": False, "msg": "roleId must be pm/builder/reviewer when apply=true"}), 400
+
+        raw_name = str(f.filename or "").strip()
+        if not raw_name:
+            return jsonify({"ok": False, "msg": "empty filename"}), 400
+        filename = secure_filename(raw_name)
+        ext = Path(filename).suffix.lower()
+        if ext not in ROLE_SKIN_ALLOWED_EXTS:
+            return jsonify({"ok": False, "msg": "only .png/.jpg/.jpeg supported"}), 400
+
+        f.stream.seek(0, os.SEEK_END)
+        size = int(f.stream.tell() or 0)
+        f.stream.seek(0)
+        if size <= 0:
+            return jsonify({"ok": False, "msg": "empty file"}), 400
+        if size > ROLE_SKIN_MAX_UPLOAD_BYTES:
+            return jsonify({"ok": False, "msg": f"file too large (> {ROLE_SKIN_MAX_UPLOAD_BYTES} bytes)"}), 400
+
+        os.makedirs(ROLE_SKIN_UPLOAD_DIR, exist_ok=True)
+        with tempfile.NamedTemporaryFile(prefix="role-skin-", suffix=ext, delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            f.save(tmp_path)
+            img = Image.open(tmp_path)
+            processed, validation = _validate_and_chroma_role_skin(img)
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+        if validation["errors"]:
+            return jsonify({"ok": False, "msg": "validation failed", "validation": validation}), 400
+
+        base_name = re.sub(r"[^a-zA-Z0-9_\-]", "", Path(filename).stem.lower())[:24] or "skin"
+        skin_id = _sanitize_skin_id(f"skin_{base_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:6]}")
+        save_name = f"{skin_id}.png"
+        save_path = os.path.join(ROLE_SKIN_UPLOAD_DIR, save_name)
+        processed.save(save_path, format="PNG")
+
+        file_url = f"/role-skins/files/{save_name}"
+        item = _normalize_role_skin_library_item({
+            "skinId": skin_id,
+            "name": Path(filename).stem,
+            "fileName": save_name,
+            "fileUrl": file_url,
+            "sourceWidth": validation.get("sourceWidth"),
+            "sourceHeight": validation.get("sourceHeight"),
+            "frameWidth": validation.get("frameWidth"),
+            "frameHeight": validation.get("frameHeight"),
+            "gridCols": ROLE_SKIN_GRID_COLS,
+            "gridRows": ROLE_SKIN_GRID_ROWS,
+            "validation": {
+                "errors": validation.get("errors", []),
+                "warnings": validation.get("warnings", []),
+            },
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+        })
+
+        library = load_role_skin_library()
+        library = [x for x in library if x.get("skinId") != skin_id]
+        library.insert(0, item)
+        library = save_role_skin_library(library)
+
+        saved_roles = load_role_skins()
+        role_row = None
+        if apply_to_role and role_id in {"pm", "builder", "reviewer"}:
+            current = {r.get("roleId"): r for r in saved_roles}
+            current[role_id] = _role_skin_uploaded_row(role_id, item, updated_at=datetime.now().isoformat())
+            saved_roles = save_role_skins([current.get("pm"), current.get("builder"), current.get("reviewer")])
+            role_row = next((r for r in saved_roles if r.get("roleId") == role_id), None)
+
+        return jsonify({
+            "ok": True,
+            "skin": item,
+            "validation": validation,
+            "role": role_row,
+            "roles": saved_roles,
+            "library": library,
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/role-skins/library/<skin_id>", methods=["DELETE"])
+def delete_role_skin_item(skin_id):
+    try:
+        sid = _sanitize_skin_id(skin_id)
+        if not sid:
+            return jsonify({"ok": False, "msg": "invalid skin id"}), 400
+        library = load_role_skin_library()
+        target = next((x for x in library if x.get("skinId") == sid), None)
+        if not target:
+            return jsonify({"ok": False, "msg": "skin not found"}), 404
+
+        library = [x for x in library if x.get("skinId") != sid]
+        library = save_role_skin_library(library)
+
+        file_name = secure_filename(str(target.get("fileName") or ""))
+        if file_name:
+            file_path = os.path.join(ROLE_SKIN_UPLOAD_DIR, file_name)
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception:
+                pass
+
+        # Remap roles that referenced this skin back to defaults.
+        roles = save_role_skins(load_role_skins())
+        return jsonify({"ok": True, "removed": sid, "roles": roles, "library": library})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/role-skins/files/<path:name>", methods=["GET"])
+def get_role_skin_file(name):
+    safe_name = secure_filename(name)
+    if not safe_name:
+        return jsonify({"ok": False, "msg": "invalid filename"}), 400
+    path = os.path.join(ROLE_SKIN_UPLOAD_DIR, safe_name)
+    if not os.path.exists(path):
+        return jsonify({"ok": False, "msg": "not found"}), 404
+    return send_from_directory(ROLE_SKIN_UPLOAD_DIR, safe_name, as_attachment=False)
 
 
 @app.route("/presentation-board", methods=["GET"])

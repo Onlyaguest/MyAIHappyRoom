@@ -1272,6 +1272,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            flex-wrap: wrap;
         }
         .role-skin-row label {
             width: 56px;
@@ -1304,6 +1305,34 @@
         .role-skin-row button:hover {
             border-color: #60a5fa;
             background: #0f172a;
+        }
+        .role-skin-upload {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .role-skin-upload input[type="file"] {
+            flex: 1;
+            min-width: 120px;
+            color: #94a3b8;
+            font-size: 10px;
+        }
+        .role-skin-validate {
+            color: #93c5fd;
+            font-size: 10px;
+            line-height: 1.35;
+            word-break: break-word;
+        }
+        .role-skin-preview {
+            width: 72px;
+            height: 72px;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+            object-fit: contain;
+            image-rendering: pixelated;
+            display: none;
         }
         #role-skin-hint {
             color: #94a3b8;
@@ -1799,19 +1828,37 @@
                 <div class="role-skin-row">
                     <label>PM</label>
                     <select id="role-skin-pm"></select>
-                    <button onclick="saveRoleSkin('pm')">保存</button>
+                    <button onclick="saveRoleSkin('pm')">应用选中</button>
                 </div>
+                <div class="role-skin-upload">
+                    <input id="role-skin-file-pm" type="file" accept=".png,.jpg,.jpeg" />
+                    <button onclick="uploadRoleSkinForRole('pm')">上传并应用</button>
+                    <img id="role-skin-preview-pm" class="role-skin-preview" alt="PM skin preview" />
+                </div>
+                <div id="role-skin-validate-pm" class="role-skin-validate"></div>
                 <div class="role-skin-row">
                     <label>Builder</label>
                     <select id="role-skin-builder"></select>
-                    <button onclick="saveRoleSkin('builder')">保存</button>
+                    <button onclick="saveRoleSkin('builder')">应用选中</button>
                 </div>
+                <div class="role-skin-upload">
+                    <input id="role-skin-file-builder" type="file" accept=".png,.jpg,.jpeg" />
+                    <button onclick="uploadRoleSkinForRole('builder')">上传并应用</button>
+                    <img id="role-skin-preview-builder" class="role-skin-preview" alt="Builder skin preview" />
+                </div>
+                <div id="role-skin-validate-builder" class="role-skin-validate"></div>
                 <div class="role-skin-row">
                     <label>Reviewer</label>
                     <select id="role-skin-reviewer"></select>
-                    <button onclick="saveRoleSkin('reviewer')">保存</button>
+                    <button onclick="saveRoleSkin('reviewer')">应用选中</button>
                 </div>
-                <div id="role-skin-hint">可先在装修抽屉替换 guest_anim_* 素材，再在这里给各角色单独绑定。</div>
+                <div class="role-skin-upload">
+                    <input id="role-skin-file-reviewer" type="file" accept=".png,.jpg,.jpeg" />
+                    <button onclick="uploadRoleSkinForRole('reviewer')">上传并应用</button>
+                    <img id="role-skin-preview-reviewer" class="role-skin-preview" alt="Reviewer skin preview" />
+                </div>
+                <div id="role-skin-validate-reviewer" class="role-skin-validate"></div>
+                <div id="role-skin-hint">支持 8×7 精灵图（PNG/JPG，背景 #ff00ff）。上传后可立即应用到对应角色。</div>
             </div>
             <div id="board-control-panel">
                 <div id="board-control-title">壁炉看板控制</div>
@@ -2397,6 +2444,8 @@
         let guestWelcomeInitialized = false;
         let teamRoles = [];
         let roleSkins = [];
+        let roleSkinLibrary = [];
+        const roleSkinLoadState = {}; // animKey -> loading|ready|error
         let lastRoleSkinsFetch = 0;
         const ROLE_SKINS_FETCH_INTERVAL = 7000;
         let lastTeamRolesFetch = 0;
@@ -2407,10 +2456,19 @@
             builder: 'guest_anim_2',
             reviewer: 'guest_anim_3'
         };
-        const ROLE_SKIN_OPTIONS = [
+        const ROLE_SKIN_BUILTIN_OPTIONS = [
             'guest_anim_1', 'guest_anim_2', 'guest_anim_3', 'guest_anim_4', 'guest_anim_5', 'guest_anim_6',
             'guest_role_1', 'guest_role_2', 'guest_role_3', 'guest_role_4', 'guest_role_5', 'guest_role_6'
         ];
+        const ROLE_SPRITE_STATE_TO_ROW = {
+            idle: 0,
+            writing: 4,
+            researching: 1,
+            executing: 4,
+            syncing: 2,
+            error: 5,
+            dragging: 6
+        };
         const SCENE_SUMMARY_DROP_ZONE = { x1: 10, y1: 70, x2: 650, y2: 700 };
         const SCENE_COMPUTER_CENTER = { x: 220, y: 420 };
         const SCENE_COMPUTER_HIT_RADIUS = { x: 360, y: 300 };
@@ -4176,6 +4234,12 @@ function toggleBrokerPanel() {
                 skin: ROLE_SKIN_DEFAULTS[rid],
                 avatar: ROLE_SKIN_DEFAULTS[rid],
                 animKey: ROLE_SKIN_DEFAULTS[rid],
+                sourceType: 'builtin',
+                skinId: '',
+                sheetUrl: '',
+                frameWidth: 32,
+                frameHeight: 32,
+                validation: { errors: [], warnings: [] },
                 updated_at: new Date().toISOString()
             }));
             const byId = {};
@@ -4185,16 +4249,69 @@ function toggleBrokerPanel() {
                 if (!row || typeof row !== 'object') return;
                 const rid = String(row.roleId || '').trim().toLowerCase();
                 if (!byId[rid]) return;
-                const val = String(row.animKey || row.avatar || row.skin || byId[rid].skin).trim() || byId[rid].skin;
+                const base = byId[rid];
+                const animKey = String(row.animKey || row.avatar || row.skin || base.skin).trim() || base.skin;
+                const sourceType = String(row.sourceType || '').trim().toLowerCase() === 'uploaded' ? 'uploaded' : 'builtin';
+                const skinId = String(row.skinId || '').trim() || (sourceType === 'uploaded' ? animKey : '');
+                const sheetUrl = String(row.sheetUrl || '').trim();
+                const frameWidth = Math.max(1, parseInt(row.frameWidth, 10) || base.frameWidth || 32);
+                const frameHeight = Math.max(1, parseInt(row.frameHeight, 10) || base.frameHeight || 32);
+                const validation = row.validation && typeof row.validation === 'object'
+                    ? {
+                        errors: Array.isArray(row.validation.errors) ? row.validation.errors.map((x) => String(x)) : [],
+                        warnings: Array.isArray(row.validation.warnings) ? row.validation.warnings.map((x) => String(x)) : []
+                    }
+                    : { errors: [], warnings: [] };
                 byId[rid] = {
-                    ...byId[rid],
-                    skin: val,
-                    avatar: val,
-                    animKey: val,
-                    updated_at: row.updated_at || byId[rid].updated_at
+                    ...base,
+                    skin: animKey,
+                    avatar: animKey,
+                    animKey,
+                    sourceType,
+                    skinId,
+                    sheetUrl,
+                    frameWidth,
+                    frameHeight,
+                    validation,
+                    updated_at: row.updated_at || base.updated_at
                 };
             });
             return defaults.map((d) => byId[d.roleId] || d);
+        }
+
+        function normalizeRoleSkinLibrary(input) {
+            const rows = Array.isArray(input) ? input : [];
+            return rows.map((row) => {
+                if (!row || typeof row !== 'object') return null;
+                const skinId = String(row.skinId || '').trim();
+                if (!skinId) return null;
+                const frameWidth = Math.max(1, parseInt(row.frameWidth, 10) || 32);
+                const frameHeight = Math.max(1, parseInt(row.frameHeight, 10) || frameWidth);
+                const validation = row.validation && typeof row.validation === 'object'
+                    ? {
+                        errors: Array.isArray(row.validation.errors) ? row.validation.errors.map((x) => String(x)) : [],
+                        warnings: Array.isArray(row.validation.warnings) ? row.validation.warnings.map((x) => String(x)) : []
+                    }
+                    : { errors: [], warnings: [] };
+                return {
+                    skinId,
+                    name: String(row.name || skinId).trim() || skinId,
+                    fileName: String(row.fileName || `${skinId}.png`).trim() || `${skinId}.png`,
+                    fileUrl: String(row.fileUrl || '').trim(),
+                    frameWidth,
+                    frameHeight,
+                    sourceWidth: Math.max(1, parseInt(row.sourceWidth, 10) || (frameWidth * 8)),
+                    sourceHeight: Math.max(1, parseInt(row.sourceHeight, 10) || (frameHeight * 7)),
+                    validation,
+                    updated_at: String(row.updated_at || '').trim() || new Date().toISOString()
+                };
+            }).filter(Boolean);
+        }
+
+        function getRoleSkinRowsById() {
+            const out = {};
+            normalizeRoleSkins(roleSkins).forEach((r) => { out[r.roleId] = r; });
+            return out;
         }
 
         function getRoleSkinMap() {
@@ -4204,18 +4321,159 @@ function toggleBrokerPanel() {
             return out;
         }
 
+        function getRoleSkinOptions() {
+            const set = new Set(ROLE_SKIN_BUILTIN_OPTIONS);
+            normalizeRoleSkinLibrary(roleSkinLibrary).forEach((item) => set.add(item.skinId));
+            return Array.from(set);
+        }
+
+        function roleSkinOptionLabel(key) {
+            const id = String(key || '').trim();
+            if (!id) return '';
+            if (ROLE_SKIN_BUILTIN_OPTIONS.includes(id)) return id;
+            const item = normalizeRoleSkinLibrary(roleSkinLibrary).find((x) => x.skinId === id);
+            return item ? `${id} (uploaded)` : id;
+        }
+
+        function updateRoleSkinPreview(roleId, row) {
+            const rid = String(roleId || '').trim().toLowerCase();
+            const img = document.getElementById(`role-skin-preview-${rid}`);
+            const msg = document.getElementById(`role-skin-validate-${rid}`);
+            if (!img || !msg) return;
+            if (row && row.sourceType === 'uploaded' && row.sheetUrl) {
+                img.src = `${row.sheetUrl}${row.sheetUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+                img.style.display = 'inline-block';
+                const warns = row.validation && Array.isArray(row.validation.warnings) ? row.validation.warnings : [];
+                const warnText = warns.length ? `｜警告: ${warns.join('；')}` : '';
+                msg.textContent = `已应用上传皮肤 (${row.frameWidth}x${row.frameHeight} 每帧)${warnText}`;
+                msg.style.color = warns.length ? '#facc15' : '#86efac';
+            } else {
+                img.removeAttribute('src');
+                img.style.display = 'none';
+                msg.textContent = '使用内置皮肤';
+                msg.style.color = '#93c5fd';
+            }
+        }
+
         function renderRoleSkinPanel() {
             const rows = normalizeRoleSkins(roleSkins);
             const byId = {};
             rows.forEach((r) => { byId[r.roleId] = r; });
+            const options = getRoleSkinOptions();
             ['pm', 'builder', 'reviewer'].forEach((rid) => {
                 const sel = document.getElementById(`role-skin-${rid}`);
                 if (!sel) return;
                 const current = (byId[rid] && byId[rid].animKey) || ROLE_SKIN_DEFAULTS[rid];
-                const options = ROLE_SKIN_OPTIONS.map((k) => `<option value="${k}">${k}</option>`).join('');
-                sel.innerHTML = options;
-                if (ROLE_SKIN_OPTIONS.includes(current)) sel.value = current;
+                sel.innerHTML = options.map((k) => `<option value="${k}">${roleSkinOptionLabel(k)}</option>`).join('');
+                if (options.includes(current)) sel.value = current;
                 else sel.value = ROLE_SKIN_DEFAULTS[rid];
+                updateRoleSkinPreview(rid, byId[rid] || null);
+            });
+        }
+
+        function teamRoleStateToSpriteRow(state) {
+            const st = normalizeState(state || 'idle');
+            if (Object.prototype.hasOwnProperty.call(ROLE_SPRITE_STATE_TO_ROW, st)) {
+                return ROLE_SPRITE_STATE_TO_ROW[st];
+            }
+            return ROLE_SPRITE_STATE_TO_ROW.idle;
+        }
+
+        function teamRoleAnimKeyForState(animKey, state, options = {}) {
+            const opts = (options && typeof options === 'object') ? options : {};
+            const dragging = !!opts.dragging;
+            const row = dragging ? ROLE_SPRITE_STATE_TO_ROW.dragging : teamRoleStateToSpriteRow(state);
+            return `${animKey}_row_${row}`;
+        }
+
+        function roleSkinDisplayScale(row) {
+            const frameHeight = Math.max(1, parseInt(row && row.frameHeight, 10) || 32);
+            return Math.max(0.45, Math.min(4.0, 128 / frameHeight));
+        }
+
+        function resetTeamRoleSprites() {
+            Object.keys(guestSprites || {}).forEach((id) => {
+                const rec = guestSprites[id];
+                if (!rec || !rec.isTeamRole) return;
+                try { rec.sprite && rec.sprite.destroy(); } catch (e) {}
+                try { rec.nameText && rec.nameText.destroy(); } catch (e) {}
+                delete guestSprites[id];
+                if (guestBubbles[id]) {
+                    try { guestBubbles[id].destroy(); } catch (e) {}
+                    delete guestBubbles[id];
+                }
+                if (guestTweens[id]) {
+                    try { guestTweens[id].move && guestTweens[id].move.stop(); } catch (e) {}
+                    try { guestTweens[id].name && guestTweens[id].name.stop(); } catch (e) {}
+                    delete guestTweens[id];
+                }
+            });
+        }
+
+        function createUploadedRoleSkinAnimations(animKey) {
+            if (!game || !game.anims || !animKey) return;
+            for (let row = 0; row < 7; row++) {
+                const key = `${animKey}_row_${row}`;
+                if (game.anims.exists(key)) {
+                    game.anims.remove(key);
+                }
+                game.anims.create({
+                    key,
+                    frames: game.anims.generateFrameNumbers(animKey, { start: row * 8, end: row * 8 + 7 }),
+                    frameRate: 8,
+                    repeat: -1
+                });
+            }
+        }
+
+        function ensureUploadedRoleSkinLoaded(row) {
+            if (!game || !row || row.sourceType !== 'uploaded') return;
+            const animKey = String(row.animKey || '').trim();
+            const sheetUrl = String(row.sheetUrl || '').trim();
+            if (!animKey || !sheetUrl) return;
+            if (game.textures.exists(animKey)) {
+                if (!game.anims.exists(`${animKey}_row_0`)) createUploadedRoleSkinAnimations(animKey);
+                roleSkinLoadState[animKey] = 'ready';
+                return;
+            }
+            if (roleSkinLoadState[animKey] === 'loading') return;
+            roleSkinLoadState[animKey] = 'loading';
+
+            const loader = new Phaser.Loader.LoaderPlugin(game);
+            loader.spritesheet(
+                animKey,
+                `${sheetUrl}${sheetUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(row.updated_at || Date.now())}`,
+                {
+                    frameWidth: Math.max(1, parseInt(row.frameWidth, 10) || 32),
+                    frameHeight: Math.max(1, parseInt(row.frameHeight, 10) || 32)
+                }
+            );
+            loader.once('complete', () => {
+                try {
+                    createUploadedRoleSkinAnimations(animKey);
+                    roleSkinLoadState[animKey] = 'ready';
+                } catch (e) {
+                    roleSkinLoadState[animKey] = 'error';
+                    console.warn('createUploadedRoleSkinAnimations failed:', e);
+                }
+                resetTeamRoleSprites();
+                renderGuestAgentsInScene();
+            });
+            loader.once('loaderror', () => {
+                roleSkinLoadState[animKey] = 'error';
+                const hint = document.getElementById('role-skin-hint');
+                if (hint) {
+                    hint.textContent = `上传皮肤加载失败，已回退默认皮肤（${animKey}）`;
+                    hint.style.color = '#fca5a5';
+                }
+                renderGuestAgentsInScene();
+            });
+            loader.start();
+        }
+
+        function ensureAllUploadedRoleSkinsLoaded() {
+            normalizeRoleSkins(roleSkins).forEach((row) => {
+                if (row.sourceType === 'uploaded') ensureUploadedRoleSkinLoaded(row);
             });
         }
 
@@ -4228,12 +4486,18 @@ function toggleBrokerPanel() {
                     throw new Error((data && data.msg) || `HTTP ${res.status}`);
                 }
                 roleSkins = normalizeRoleSkins(data.roles);
+                roleSkinLibrary = normalizeRoleSkinLibrary(data.library);
             } catch (e) {
                 roleSkins = normalizeRoleSkins(roleSkins);
+                roleSkinLibrary = normalizeRoleSkinLibrary(roleSkinLibrary);
                 if (!quiet) console.warn('fetchRoleSkins fallback defaults:', e);
             }
             renderRoleSkinPanel();
-            if (game) renderGuestAgentsInScene();
+            if (game) {
+                ensureAllUploadedRoleSkinsLoaded();
+                resetTeamRoleSprites();
+                renderGuestAgentsInScene();
+            }
         }
 
         async function saveRoleSkin(roleId) {
@@ -4248,17 +4512,24 @@ function toggleBrokerPanel() {
                 hint.style.color = '#93c5fd';
             }
             try {
+                const isUploaded = normalizeRoleSkinLibrary(roleSkinLibrary).some((x) => x.skinId === skinKey);
+                const payload = isUploaded
+                    ? { roleId: rid, sourceType: 'uploaded', skinId: skinKey }
+                    : { roleId: rid, sourceType: 'builtin', animKey: skinKey };
                 const res = await fetch('/role-skins', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ roleId: rid, animKey: skinKey })
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
                 if (!res.ok || !data.ok || !Array.isArray(data.roles)) {
                     throw new Error((data && data.msg) || `HTTP ${res.status}`);
                 }
                 roleSkins = normalizeRoleSkins(data.roles);
+                roleSkinLibrary = normalizeRoleSkinLibrary(data.library);
                 renderRoleSkinPanel();
+                ensureAllUploadedRoleSkinsLoaded();
+                resetTeamRoleSprites();
                 if (hint) {
                     hint.textContent = `${rid.toUpperCase()} 已绑定 ${skinKey}`;
                     hint.style.color = '#86efac';
@@ -4272,7 +4543,91 @@ function toggleBrokerPanel() {
             }
         }
 
+        async function uploadRoleSkinForRole(roleId) {
+            const rid = String(roleId || '').trim().toLowerCase();
+            if (!['pm', 'builder', 'reviewer'].includes(rid)) return;
+            const input = document.getElementById(`role-skin-file-${rid}`);
+            const file = input && input.files && input.files[0];
+            const hint = document.getElementById('role-skin-hint');
+            const msg = document.getElementById(`role-skin-validate-${rid}`);
+            if (!file) {
+                if (msg) {
+                    msg.textContent = '请先选择 PNG/JPG 精灵图文件';
+                    msg.style.color = '#fca5a5';
+                }
+                return;
+            }
+            const form = new FormData();
+            form.append('file', file);
+            form.append('roleId', rid);
+            form.append('apply', '1');
+            if (hint) {
+                hint.textContent = `${rid.toUpperCase()} 上传中...`;
+                hint.style.color = '#93c5fd';
+            }
+            if (msg) {
+                msg.textContent = '上传并校验中...';
+                msg.style.color = '#93c5fd';
+            }
+            try {
+                const res = await fetch('/role-skins/upload', {
+                    method: 'POST',
+                    body: form
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok || !data.skin || !Array.isArray(data.roles)) {
+                    const detail = (data && data.validation)
+                        ? `${(data.validation.errors || []).join('；') || data.msg || '校验失败'}`
+                        : ((data && data.msg) || `HTTP ${res.status}`);
+                    throw new Error(detail);
+                }
+                roleSkins = normalizeRoleSkins(data.roles);
+                roleSkinLibrary = normalizeRoleSkinLibrary(data.library);
+                renderRoleSkinPanel();
+                ensureAllUploadedRoleSkinsLoaded();
+                resetTeamRoleSprites();
+                if (input) input.value = '';
+                const warns = (data.validation && Array.isArray(data.validation.warnings)) ? data.validation.warnings : [];
+                if (msg) {
+                    msg.textContent = warns.length
+                        ? `上传成功（带警告）：${warns.join('；')}`
+                        : '上传成功并已应用';
+                    msg.style.color = warns.length ? '#facc15' : '#86efac';
+                }
+                if (hint) {
+                    hint.textContent = `${rid.toUpperCase()} 已应用上传皮肤 ${data.skin.skinId}`;
+                    hint.style.color = '#86efac';
+                }
+                if (game) renderGuestAgentsInScene();
+            } catch (e) {
+                if (msg) {
+                    msg.textContent = `上传失败：${e.message || e}，已回退默认皮肤`;
+                    msg.style.color = '#fca5a5';
+                }
+                if (hint) {
+                    hint.textContent = `${rid.toUpperCase()} 上传失败，回退默认皮肤`;
+                    hint.style.color = '#fca5a5';
+                }
+                try {
+                    const res = await fetch('/role-skins', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ roleId: rid, sourceType: 'builtin', animKey: ROLE_SKIN_DEFAULTS[rid] })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.ok && Array.isArray(data.roles)) {
+                        roleSkins = normalizeRoleSkins(data.roles);
+                        roleSkinLibrary = normalizeRoleSkinLibrary(data.library);
+                        renderRoleSkinPanel();
+                        resetTeamRoleSprites();
+                        if (game) renderGuestAgentsInScene();
+                    }
+                } catch (e2) {}
+            }
+        }
+
         window.saveRoleSkin = saveRoleSkin;
+        window.uploadRoleSkinForRole = uploadRoleSkinForRole;
 
         function ownerCatStateFromMainState(mainState) {
             const st = normalizeState(mainState || 'idle');
@@ -4305,6 +4660,7 @@ function toggleBrokerPanel() {
         function getTeamRoleSceneActors() {
             const roles = normalizeTeamRoles(teamRoles);
             const skinByRole = getRoleSkinMap();
+            const skinRowsByRole = getRoleSkinRowsById();
             const presenterRoleId = String((presentationBoardState && presentationBoardState.presenterRoleId) || '').trim().toLowerCase();
             const presenterTopic = String(
                 (presentationBoardState && (
@@ -4328,6 +4684,7 @@ function toggleBrokerPanel() {
                     isPresenter,
                     roleId: role.roleId,
                     avatar: skinByRole[role.roleId] || ROLE_SKIN_DEFAULTS[role.roleId] || 'guest_anim_1',
+                    roleSkinRow: skinRowsByRole[role.roleId] || null,
                     bubbleText: isPresenter ? presenterBubble : (role.note || '')
                 };
             });
@@ -5430,9 +5787,53 @@ function toggleBrokerPanel() {
             if (!game) return;
             const visitors = getMergedVisitors();
             const teamActors = getTeamRoleSceneActors();
+            const roleSkinRowsByRole = getRoleSkinRowsById();
             const sceneActors = [...teamActors, ...visitors];
             const seenIds = new Set();
             let idxBreak = 0, idxWrite = 0, idxError = 0, idxPresenter = 0;
+
+            const resolveTeamRoleRender = (agent, options = {}) => {
+                const rid = String(agent && agent.roleId || '').trim().toLowerCase();
+                const state = normalizeState(agent && agent.state || 'idle');
+                const opts = (options && typeof options === 'object') ? options : {};
+                const dragging = !!opts.dragging;
+                const row = roleSkinRowsByRole[rid] || {
+                    roleId: rid,
+                    sourceType: 'builtin',
+                    animKey: ROLE_SKIN_DEFAULTS[rid] || 'guest_anim_1',
+                    frameWidth: 32,
+                    frameHeight: 32
+                };
+                if (row.sourceType === 'uploaded') {
+                    ensureUploadedRoleSkinLoaded(row);
+                    const textureKey = String(row.animKey || '').trim();
+                    const animKey = teamRoleAnimKeyForState(textureKey, state, { dragging });
+                    if (textureKey && game.textures.exists(textureKey) && game.anims.exists(animKey)) {
+                        return {
+                            textureKey,
+                            playAnimKey: animKey,
+                            scale: roleSkinDisplayScale(row),
+                            sourceType: 'uploaded'
+                        };
+                    }
+                }
+                const builtKey = String((row.animKey || '').trim() || ROLE_SKIN_DEFAULTS[rid] || 'guest_anim_1');
+                const builtIdle = `${builtKey}_idle`;
+                if (game.textures.exists(builtKey) && game.anims.exists(builtIdle)) {
+                    return {
+                        textureKey: builtKey,
+                        playAnimKey: builtIdle,
+                        scale: 4.0,
+                        sourceType: 'builtin'
+                    };
+                }
+                return {
+                    textureKey: 'guest_anim_1',
+                    playAnimKey: 'guest_anim_1_idle',
+                    scale: 4.0,
+                    sourceType: 'builtin'
+                };
+            };
 
             sceneActors.forEach(agent => {
                 const id = agent.agentId;
@@ -5469,7 +5870,14 @@ function toggleBrokerPanel() {
                         const animKey = 'guest_anim_1';
                         const f = 0;
                         sprite = game.add.sprite(p.x, p.y, animKey, f).setOrigin(0.5, 1).setScale(1.1);
-                        if (sprite.anims && sprite.anims.play) sprite.anims.play(animKey, true);
+                        if (sprite.anims && sprite.anims.play && game.anims.exists('guest_anim_1_idle')) sprite.anims.play('guest_anim_1_idle', true);
+                    } else if (agent.isTeamRole) {
+                        const renderSkin = resolveTeamRoleRender(agent);
+                        const textureKey = renderSkin.textureKey;
+                        sprite = game.add.sprite(p.x, p.y, textureKey).setOrigin(0.5, 1).setScale(renderSkin.scale);
+                        if (renderSkin.playAnimKey && sprite.anims && sprite.anims.play && game.anims.exists(renderSkin.playAnimKey)) {
+                            sprite.anims.play(renderSkin.playAnimKey, true);
+                        }
                     } else {
                         // 非 demo 访客：优先用动画精灵（guest_anim_x），其次静态图，兜底星星
                         // 先确定角色索引（1-6）
@@ -5587,6 +5995,21 @@ function toggleBrokerPanel() {
                         g.nameText.setColor(stateColor(g.state));
                     } else if (g.nameText && g.nameText.setColor) {
                         g.nameText.setColor('#ffffff');
+                    }
+                    if (g.isTeamRole && g.sprite) {
+                        const renderSkin = resolveTeamRoleRender(agent);
+                        if (renderSkin.textureKey && g.sprite.texture && g.sprite.texture.key !== renderSkin.textureKey && g.sprite.setTexture) {
+                            g.sprite.setTexture(renderSkin.textureKey);
+                        }
+                        if (g.sprite.setScale && Number.isFinite(renderSkin.scale)) {
+                            g.sprite.setScale(renderSkin.scale);
+                        }
+                        if (renderSkin.playAnimKey && g.sprite.anims && g.sprite.anims.play && game.anims.exists(renderSkin.playAnimKey)) {
+                            const curAnim = g.sprite.anims.currentAnim ? g.sprite.anims.currentAnim.key : '';
+                            if (curAnim !== renderSkin.playAnimKey) {
+                                g.sprite.anims.play(renderSkin.playAnimKey, true);
+                            }
+                        }
                     }
                 }
             });
@@ -6443,6 +6866,16 @@ function toggleBrokerPanel() {
                 gameObject.setDepth(3001);
                 const rec = guestSprites[gameObject.__teamAgentId];
                 if (rec && rec.nameText) rec.nameText.setDepth(3002);
+                if (rec && rec.isTeamRole && gameObject.anims && gameObject.anims.play) {
+                    const roleRows = getRoleSkinRowsById();
+                    const skinRow = roleRows[gameObject.__teamRoleId];
+                    if (skinRow && skinRow.sourceType === 'uploaded') {
+                        const dragAnim = teamRoleAnimKeyForState(skinRow.animKey, rec.state || 'idle', { dragging: true });
+                        if (game.anims.exists(dragAnim)) {
+                            gameObject.anims.play(dragAnim, true);
+                        }
+                    }
+                }
             });
 
             game.input.on('drag', (pointer, gameObject, dragX, dragY) => {
