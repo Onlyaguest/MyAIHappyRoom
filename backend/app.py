@@ -506,6 +506,12 @@ def _sanitize_skin_id(value: str) -> str:
     return re.sub(r"[^a-z0-9_\-]", "", raw)
 
 
+def _is_builtin_role_skin_key(value: str) -> bool:
+    key = str(value or "").strip().lower()
+    # Keep builtin keys explicit to avoid persisting stale uploaded ids as builtin.
+    return bool(re.fullmatch(r"guest_(anim|role)_[1-6]", key))
+
+
 def _normalize_validation_result(raw):
     data = raw if isinstance(raw, dict) else {}
     errors = data.get("errors") if isinstance(data.get("errors"), list) else []
@@ -612,11 +618,15 @@ def _role_skin_uploaded_row(role_id, item, updated_at=None):
 
 def _role_skin_builtin_row(role_id, skin_key, updated_at=None):
     ts = str(updated_at or "").strip() or datetime.now().isoformat()
+    safe_skin = str(skin_key or "").strip()
+    if not _is_builtin_role_skin_key(safe_skin):
+        safe_skin = (_default_role_skins()[0]["skin"] if role_id not in {"pm", "builder", "reviewer"}
+                     else next((x["skin"] for x in _default_role_skins() if x["roleId"] == role_id), "guest_anim_1"))
     return {
         "roleId": role_id,
-        "skin": skin_key,
-        "avatar": skin_key,
-        "animKey": skin_key,
+        "skin": safe_skin,
+        "avatar": safe_skin,
+        "animKey": safe_skin,
         "sourceType": "builtin",
         "skinId": "",
         "sheetUrl": "",
@@ -661,8 +671,13 @@ def load_role_skins():
                 if item:
                     merged[rid] = _role_skin_uploaded_row(rid, item, updated_at=updated_at)
                     continue
+                if source_type == "uploaded":
+                    # Uploaded skin was deleted; force fallback to valid builtin default.
+                    merged[rid] = _role_skin_builtin_row(rid, fallback["skin"], updated_at=updated_at)
+                    continue
 
-            merged[rid] = _role_skin_builtin_row(rid, skin_key, updated_at=updated_at)
+            safe_builtin = skin_key if _is_builtin_role_skin_key(skin_key) else fallback["skin"]
+            merged[rid] = _role_skin_builtin_row(rid, safe_builtin, updated_at=updated_at)
 
     return [merged.get(d["roleId"], d) for d in defaults]
 
@@ -691,8 +706,12 @@ def save_role_skins(rows):
             if item:
                 merged[rid] = _role_skin_uploaded_row(rid, item, updated_at=updated_at)
                 continue
+            if source_type == "uploaded":
+                merged[rid] = _role_skin_builtin_row(rid, fallback["skin"], updated_at=updated_at)
+                continue
 
-        merged[rid] = _role_skin_builtin_row(rid, skin_key, updated_at=updated_at)
+        safe_builtin = skin_key if _is_builtin_role_skin_key(skin_key) else fallback["skin"]
+        merged[rid] = _role_skin_builtin_row(rid, safe_builtin, updated_at=updated_at)
 
     final_rows = [merged.get(rid, defaults[rid]) for rid in ("pm", "builder", "reviewer")]
     with open(ROLE_SKINS_FILE, "w", encoding="utf-8") as f:
