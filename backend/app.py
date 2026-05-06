@@ -720,68 +720,191 @@ def save_role_skins(rows):
 
 
 def _is_near_magenta(r, g, b, a):
-    if a <= 10:
+    if a <= 12:
         return True
-    return (abs(int(r) - 255) <= 18) and (int(g) <= 26) and (abs(int(b) - 255) <= 18)
+    r = int(r)
+    g = int(g)
+    b = int(b)
+    # Tolerant "magenta-like" check: accepts compressed/AI-generated near-magenta.
+    # Examples that should pass: (250,2,249), (248,6,249), (241,12,238)
+    if r < 180 or b < 180:
+        return False
+    if g > 92:
+        return False
+    if abs(r - b) > 72:
+        return False
+    return (min(r, b) - g) >= 95
+
+
+def _iter_border_points(width, height):
+    if width <= 0 or height <= 0:
+        return []
+    points = []
+    for x in range(width):
+        points.append((x, 0))
+        if height > 1:
+            points.append((x, height - 1))
+    for y in range(1, max(1, height - 1)):
+        points.append((0, y))
+        if width > 1:
+            points.append((width - 1, y))
+    return points
+
+
+def _auto_crop_to_skin_grid(img, warnings, info):
+    src_w, src_h = img.size
+    expected_ratio = float(ROLE_SKIN_GRID_COLS) / float(ROLE_SKIN_GRID_ROWS)
+    ratio = (float(src_w) / float(src_h)) if src_h > 0 else 0.0
+    ratio_delta = abs(ratio - expected_ratio)
+    info["ratioDelta"] = round(ratio_delta, 6)
+
+    if src_w <= 0 or src_h <= 0:
+        return img, ["invalid image size"]
+
+    frame = int(min(src_w // ROLE_SKIN_GRID_COLS, src_h // ROLE_SKIN_GRID_ROWS))
+    if frame <= 0:
+        return img, ["image is too small for 8x7 sprite grid"]
+
+    target_w = frame * ROLE_SKIN_GRID_COLS
+    target_h = frame * ROLE_SKIN_GRID_ROWS
+    crop_x = max(0, src_w - target_w)
+    crop_y = max(0, src_h - target_h)
+    coverage = (float(target_w * target_h) / float(max(1, src_w * src_h)))
+    info["cropCoverage"] = round(coverage, 4)
+    info["targetWidth"] = int(target_w)
+    info["targetHeight"] = int(target_h)
+
+    # Hard-fail only when the source is clearly not close to 8:7.
+    if ratio_delta > 0.18 and coverage < 0.82:
+        return img, [f"image ratio is too far from expected {ROLE_SKIN_GRID_COLS}:{ROLE_SKIN_GRID_ROWS}"]
+
+    if crop_x > 0 or crop_y > 0:
+        left = max(0, (src_w - target_w) // 2)
+        top = max(0, (src_h - target_h) // 2)
+        img = img.crop((left, top, left + target_w, top + target_h))
+        warnings.append(
+            f"auto-cropped sprite sheet to {target_w}x{target_h} ({ROLE_SKIN_GRID_COLS}x{ROLE_SKIN_GRID_ROWS} square frames)"
+        )
+        info["autoCrop"] = {
+            "left": int(left),
+            "top": int(top),
+            "rightTrim": int(src_w - (left + target_w)),
+            "bottomTrim": int(src_h - (top + target_h)),
+        }
+
+    return img, []
+
+
+def _edge_connected_magenta_cleanup(img, warnings, info):
+    w, h = img.size
+    pixels = img.load()
+    total = max(1, w * h)
+    border_points = _iter_border_points(w, h)
+    border_total = max(1, len(border_points))
+
+    border_magenta_like = 0
+    for x, y in border_points:
+        if _is_near_magenta(*pixels[x, y]):
+            border_magenta_like += 1
+    border_ratio = border_magenta_like / float(border_total)
+    info["magentaLikeBorderRatio"] = round(border_ratio, 4)
+
+    # If the border barely looks magenta-like, this is likely not a valid sprite sheet background.
+    if border_ratio < 0.28:
+        return ["unable to detect edge-connected magenta-like background"], 0
+
+    visited = bytearray(total)
+    bg_mask = bytearray(total)
+    stack = []
+
+    def idx(x, y):
+        return y * w + x
+
+    for x, y in border_points:
+        if _is_near_magenta(*pixels[x, y]):
+            stack.append((x, y))
+
+    while stack:
+        x, y = stack.pop()
+        i = idx(x, y)
+        if visited[i]:
+            continue
+        visited[i] = 1
+        if not _is_near_magenta(*pixels[x, y]):
+            continue
+        bg_mask[i] = 1
+        if x > 0:
+            ni = idx(x - 1, y)
+            if not visited[ni]:
+                stack.append((x - 1, y))
+        if x + 1 < w:
+            ni = idx(x + 1, y)
+            if not visited[ni]:
+                stack.append((x + 1, y))
+        if y > 0:
+            ni = idx(x, y - 1)
+            if not visited[ni]:
+                stack.append((x, y - 1))
+        if y + 1 < h:
+            ni = idx(x, y + 1)
+            if not visited[ni]:
+                stack.append((x, y + 1))
+
+    bg_count = 0
+    approx_bg_count = 0
+    for y in range(h):
+        for x in range(w):
+            i = idx(x, y)
+            if not bg_mask[i]:
+                continue
+            bg_count += 1
+            r, g, b, a = pixels[x, y]
+            if not (int(r) == 255 and int(g) == 0 and int(b) == 255 and int(a) in {0, 255}):
+                approx_bg_count += 1
+            pixels[x, y] = (255, 0, 255, 0)
+
+    bg_ratio = bg_count / float(total)
+    info["edgeConnectedMagentaRatio"] = round(bg_ratio, 4)
+    info["edgeConnectedMagentaPixels"] = int(bg_count)
+
+    errors = []
+    if bg_ratio < 0.06:
+        errors.append("detected magenta-like background is too small; expected #ff00ff-style background")
+    elif bg_ratio < 0.22:
+        warnings.append("magenta-like background ratio is low; upload succeeded with tolerant cleanup")
+
+    if approx_bg_count > 0:
+        warnings.append("normalized near-magenta background to transparent")
+        info["normalizedNearMagentaPixels"] = int(approx_bg_count)
+
+    return errors, bg_count
 
 
 def _validate_and_chroma_role_skin(image):
     img = image.convert("RGBA")
-    w, h = img.size
+    src_w, src_h = img.size
     errors = []
     warnings = []
     info = {}
 
-    if w <= 0 or h <= 0:
-        errors.append("invalid image size")
-    if (w % ROLE_SKIN_GRID_COLS) != 0 or (h % ROLE_SKIN_GRID_ROWS) != 0:
-        errors.append(f"image size must be divisible by {ROLE_SKIN_GRID_COLS}x{ROLE_SKIN_GRID_ROWS}")
+    img, crop_errors = _auto_crop_to_skin_grid(img, warnings, info)
+    errors.extend(crop_errors)
+    w, h = img.size
 
-    frame_w = (w // ROLE_SKIN_GRID_COLS) if ROLE_SKIN_GRID_COLS else 0
-    frame_h = (h // ROLE_SKIN_GRID_ROWS) if ROLE_SKIN_GRID_ROWS else 0
-    if frame_w <= 0 or frame_h <= 0:
-        errors.append("frame size is invalid")
-    elif frame_w != frame_h:
-        errors.append("frame must be square (frameWidth == frameHeight)")
+    if not errors:
+        frame_w = (w // ROLE_SKIN_GRID_COLS) if ROLE_SKIN_GRID_COLS else 0
+        frame_h = (h // ROLE_SKIN_GRID_ROWS) if ROLE_SKIN_GRID_ROWS else 0
+        if frame_w <= 0 or frame_h <= 0:
+            errors.append("frame size is invalid")
+        elif frame_w != frame_h:
+            errors.append("frame must be square (frameWidth == frameHeight)")
+    else:
+        frame_w = (w // ROLE_SKIN_GRID_COLS) if ROLE_SKIN_GRID_COLS else 0
+        frame_h = (h // ROLE_SKIN_GRID_ROWS) if ROLE_SKIN_GRID_ROWS else 0
 
-    try:
-        ratio = float(w) / float(h)
-        if abs(ratio - (ROLE_SKIN_GRID_COLS / ROLE_SKIN_GRID_ROWS)) > 0.02:
-            warnings.append("image ratio differs from expected 8:7")
-    except Exception:
-        pass
-
-    pixels = img.load()
-    total = max(1, w * h)
-    magenta_count = 0
-    border_count = 0
-    border_magenta = 0
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = pixels[x, y]
-            near_magenta = _is_near_magenta(r, g, b, a)
-            if near_magenta:
-                magenta_count += 1
-                pixels[x, y] = (255, 0, 255, 0)
-            if x == 0 or y == 0 or x == (w - 1) or y == (h - 1):
-                border_count += 1
-                if near_magenta:
-                    border_magenta += 1
-
-    magenta_ratio = magenta_count / float(total)
-    border_ratio = (border_magenta / float(border_count)) if border_count > 0 else 0.0
-    info["magentaPixelRatio"] = round(magenta_ratio, 4)
-    info["magentaBorderRatio"] = round(border_ratio, 4)
-
-    if magenta_ratio < 0.10:
-        errors.append("magenta background is too low; expected #ff00ff background")
-    elif magenta_ratio < 0.35:
-        warnings.append("magenta background ratio is low; check background purity")
-
-    if border_ratio < 0.75:
-        errors.append("image border should mostly be magenta background")
-    elif border_ratio < 0.92:
-        warnings.append("image border contains many non-magenta pixels")
+    if not errors:
+        bg_errors, _ = _edge_connected_magenta_cleanup(img, warnings, info)
+        errors.extend(bg_errors)
 
     validation = {
         "errors": errors,
@@ -791,8 +914,10 @@ def _validate_and_chroma_role_skin(image):
         "gridRows": ROLE_SKIN_GRID_ROWS,
         "frameWidth": frame_w,
         "frameHeight": frame_h,
-        "sourceWidth": w,
-        "sourceHeight": h,
+        "sourceWidth": src_w,
+        "sourceHeight": src_h,
+        "outputWidth": w,
+        "outputHeight": h,
     }
     return img, validation
 
