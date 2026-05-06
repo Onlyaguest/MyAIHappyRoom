@@ -1949,7 +1949,9 @@
         let lastTeamRolesFetch = 0;
         const TEAM_ROLES_FETCH_INTERVAL = 4000;
         const ROLE_STATE_SEQUENCE = ['idle', 'writing', 'researching', 'executing', 'syncing', 'error'];
-        const SCENE_SUMMARY_DROP_ZONE = { x1: 110, y1: 230, x2: 360, y2: 450 };
+        const SCENE_SUMMARY_DROP_ZONE = { x1: 70, y1: 170, x2: 430, y2: 540 };
+        const SCENE_COMPUTER_CENTER = { x: 218, y: 417 };
+        const SCENE_COMPUTER_HIT_RADIUS = { x: 185, y: 165 };
         const TEAM_ROLE_DEFAULTS = [
             { roleId: 'pm', name: 'PM', role: 'Product / Project Manager', state: 'syncing', note: '拆分任务与验收口径', updated_at: new Date().toISOString() },
             { roleId: 'builder', name: 'Builder', role: 'Developer', state: 'executing', note: '实现功能与联调', updated_at: new Date().toISOString() },
@@ -1957,6 +1959,8 @@
         ];
         let draggingRoleId = null;
         let dragDropTriggered = false;
+        let lastPointerWorld = { x: 0, y: 0 };
+        let isDraggingTeamSprite = false;
 
         // 状态控制栏函数（用于测试）
         function setState(state, detail) {
@@ -3767,12 +3771,41 @@ function toggleBrokerPanel() {
         }
 
         function isInComputerDropZone(x, y) {
-            return (
+            const inRect = (
                 x >= SCENE_SUMMARY_DROP_ZONE.x1 &&
                 x <= SCENE_SUMMARY_DROP_ZONE.x2 &&
                 y >= SCENE_SUMMARY_DROP_ZONE.y1 &&
                 y <= SCENE_SUMMARY_DROP_ZONE.y2
             );
+            const nx = (x - SCENE_COMPUTER_CENTER.x) / SCENE_COMPUTER_HIT_RADIUS.x;
+            const ny = (y - SCENE_COMPUTER_CENTER.y) / SCENE_COMPUTER_HIT_RADIUS.y;
+            const inEllipse = (nx * nx + ny * ny) <= 1.0;
+            return inRect || inEllipse;
+        }
+
+        function buildNudgeNote(original, triggerName) {
+            const nowText = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            const base = String(original || '').replace(/^\[催办.*?\]\s*/, '').trim();
+            const prefix = `[催办 ${nowText} by ${triggerName}]`;
+            const suffix = base ? ` ${base}` : ' 请同步你当前负责的进度。';
+            return `${prefix}${suffix}`;
+        }
+
+        async function autoNudgeOwners(triggerRoleId) {
+            const roles = normalizeTeamRoles(teamRoles);
+            const triggerRole = roles.find(r => r.roleId === triggerRoleId);
+            const triggerName = triggerRole ? triggerRole.name : 'Builder';
+            const targets = roles.filter((r) => r.roleId !== triggerRoleId && r.roleId);
+            const nudged = [];
+
+            for (const role of targets) {
+                const shouldNudge = role.state !== 'idle' || String(role.note || '').trim().length === 0;
+                if (!shouldNudge) continue;
+                const nextNote = buildNudgeNote(role.note, triggerName);
+                await applyTeamRolePatch(role.roleId, { note: nextNote });
+                nudged.push(role.name || role.roleId);
+            }
+            return nudged;
         }
 
         function relativeTimeLabel(isoStr) {
@@ -3932,13 +3965,67 @@ function toggleBrokerPanel() {
             }).join('');
         }
 
-        function buildRuleSummaryText(roles) {
+        function buildProjectDigest(roles, triggerRoleId) {
             const safeRoles = normalizeTeamRoles(roles);
+            const byId = {};
+            safeRoles.forEach((r) => { byId[r.roleId] = r; });
+            const trigger = byId[triggerRoleId] || safeRoles.find(r => r.roleId === 'builder') || safeRoles[0];
+            const triggerName = (trigger && trigger.name) || 'Builder';
+
             const activeCount = safeRoles.filter(r => r.state !== 'idle').length;
             const errorCount = safeRoles.filter(r => r.state === 'error').length;
-            const firstLine = `角色共 ${safeRoles.length} 人，活跃 ${activeCount} 人${errorCount > 0 ? `，异常 ${errorCount} 人` : ''}。`;
-            const detailLines = safeRoles.map((r) => `${r.name}（${r.role}）: ${stateLabel(r.state)}；${r.note || '无补充说明'}`);
-            return `${firstLine}\n${detailLines.join('\n')}`;
+            const blockedCount = safeRoles.filter(r => r.state === 'error' || r.state === 'idle').length;
+            const projectStateLine = errorCount > 0
+                ? `项目状态：有风险（异常 ${errorCount} 个），需先处理阻塞。`
+                : (blockedCount === 0
+                    ? '项目状态：推进中（所有 owner 均在工作态）。'
+                    : `项目状态：推进中（活跃 ${activeCount}/${safeRoles.length}，待跟进 ${blockedCount}）。`);
+
+            const taskSnapshot = [
+                { id: '#1/#6', owner: byId.pm || safeRoles.find(r => r.roleId === 'pm'), title: '总控/汇报与验收推进' },
+                { id: '#9', owner: byId.builder || safeRoles.find(r => r.roleId === 'builder'), title: '拖拽触发与项目总结修复' },
+                { id: '#8', owner: byId.reviewer || safeRoles.find(r => r.roleId === 'reviewer'), title: '像素人路径 QA 复测结论' }
+            ];
+
+            const taskLines = taskSnapshot.map((t) => {
+                const owner = t.owner || { name: 'Unknown', state: 'idle', note: '' };
+                return `- ${t.id} ${t.title}：${owner.name}（${stateLabel(owner.state)}）｜${owner.note || '待同步'}`;
+            });
+
+            const debtLines = safeRoles.map((r) => {
+                if (r.roleId === triggerRoleId) return `- ${r.name}：已触发总结，需继续盯推进和回报。`;
+                if (r.state === 'error') return `- ${r.name}：欠“异常处理结论 + 回归结果”。`;
+                if (r.state === 'idle') return `- ${r.name}：欠“立即认领并同步下一步动作”。`;
+                return `- ${r.name}：欠“当前进展同步（在做什么、何时完成）”。`;
+            });
+
+            const nudgeSuggestionLines = safeRoles
+                .filter((r) => r.roleId !== triggerRoleId)
+                .map((r) => `- 催 ${r.name}：请在 10 分钟内同步当前状态与下一步。`);
+
+            return {
+                triggerName,
+                projectStateLine,
+                taskLines,
+                debtLines,
+                nudgeSuggestionLines
+            };
+        }
+
+        function buildRuleSummaryText(roles, triggerRoleId) {
+            const digest = buildProjectDigest(roles, triggerRoleId);
+            return [
+                digest.projectStateLine,
+                '',
+                '各任务状态：',
+                ...digest.taskLines,
+                '',
+                '谁还欠什么：',
+                ...digest.debtLines,
+                '',
+                '下一步催办建议：',
+                ...digest.nudgeSuggestionLines
+            ].join('\n');
         }
 
         async function triggerOneClickSummary(triggerRoleId) {
@@ -3959,15 +4046,22 @@ function toggleBrokerPanel() {
                 }
                 summaryText = String(data.summary);
             } catch (e) {
-                summaryText = buildRuleSummaryText(roles);
+                summaryText = buildRuleSummaryText(roles, triggerRoleId);
                 console.warn('one-click-summary API failed, fallback local rule summary:', e);
             }
 
-            setSummaryContent(summaryText);
-            const triggerName = triggerRole ? triggerRole.name : '角色';
+            const digest = buildProjectDigest(roles, triggerRoleId);
+            const nudgedOwners = await autoNudgeOwners(triggerRoleId);
+            const nudgeLine = nudgedOwners.length > 0
+                ? `\n\n推进动作：已催办 ${nudgedOwners.join('、')} 同步当前进展。`
+                : `\n\n推进动作：当前无额外催办对象。`;
+            const digestLine = `\n\n触发人：${digest.triggerName}（已在电脑前发起项目盘点）`;
+            setSummaryContent(summaryText + digestLine + nudgeLine);
+            const triggerName = triggerRole ? triggerRole.name : digest.triggerName;
             const nowText = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-            setSummaryStatusHint(`${triggerName} 于 ${nowText} 触发`, 'ok');
-            showSummaryBubble(`总结已生成：由 ${triggerName} 触发`);
+            const nudgeHint = nudgedOwners.length > 0 ? `，并催办 ${nudgedOwners.join('、')}` : '';
+            setSummaryStatusHint(`${triggerName} 于 ${nowText} 触发${nudgeHint}`, 'ok');
+            showSummaryBubble(`总结已生成：由 ${triggerName} 触发${nudgeHint}`);
         }
 
         function bindSummaryDropzone() {
@@ -4001,7 +4095,7 @@ function toggleBrokerPanel() {
             draggingRoleId = roleId;
             dragDropTriggered = false;
             setSummaryDropzoneVisible(true);
-            setSummaryStatusHint('拖卡片或像素人到电脑热区即可触发总结', 'info');
+            setSummaryStatusHint('拖卡片或像素人到电脑屏幕/桌面高亮区域即可触发总结', 'info');
             const card = event.target && event.target.closest ? event.target.closest('.team-role-item') : null;
             if (card) card.classList.add('dragging');
             if (event.dataTransfer) {
@@ -4016,8 +4110,8 @@ function toggleBrokerPanel() {
             setSummaryDropzoneHot(false);
             setSummaryDropzoneVisible(false);
             if (!dragDropTriggered) {
-                setSummaryStatusHint('未命中电脑热区，未触发总结', 'warn');
-                showSummaryBubble('未命中电脑热区');
+                setSummaryStatusHint('未命中，请拖到电脑屏幕/桌面高亮区域', 'warn');
+                showSummaryBubble('未命中，请拖到电脑屏幕/桌面高亮区域');
             }
             draggingRoleId = null;
         }
@@ -5030,6 +5124,7 @@ function toggleBrokerPanel() {
             }
 
             game.input.on('pointerdown', (pointer) => {
+                if (isDraggingTeamSprite) return;
                 if (!panEnabled) return;
                 isPanning = true;
                 panStart = { x: pointer.x, y: pointer.y, sx: camera.scrollX, sy: camera.scrollY };
@@ -5037,6 +5132,7 @@ function toggleBrokerPanel() {
             });
 
             game.input.on('pointerup', () => {
+                if (isDraggingTeamSprite) return;
                 if (!panEnabled) return;
                 isPanning = false;
                 panStart = null;
@@ -5044,6 +5140,11 @@ function toggleBrokerPanel() {
             });
 
             game.input.on('pointermove', (pointer) => {
+                lastPointerWorld = {
+                    x: Number.isFinite(pointer.worldX) ? pointer.worldX : pointer.x,
+                    y: Number.isFinite(pointer.worldY) ? pointer.worldY : pointer.y
+                };
+                if (isDraggingTeamSprite) return;
                 if (!panEnabled || !isPanning || !panStart) return;
                 const dx = pointer.x - panStart.x;
                 const dy = pointer.y - panStart.y;
@@ -5078,21 +5179,30 @@ function toggleBrokerPanel() {
             });
 
             // Team-role pixel people: drag in scene to trigger one-click summary.
-            game.input.on('dragstart', (_pointer, gameObject) => {
+            game.input.on('dragstart', (pointer, gameObject) => {
                 if (!gameObject || !gameObject.__teamRoleId) return;
+                isDraggingTeamSprite = true;
                 isPanning = false;
                 panStart = null;
+                lastPointerWorld = {
+                    x: Number.isFinite(pointer.worldX) ? pointer.worldX : gameObject.x,
+                    y: Number.isFinite(pointer.worldY) ? pointer.worldY : gameObject.y
+                };
                 draggingRoleId = gameObject.__teamRoleId;
                 dragDropTriggered = false;
                 setSummaryDropzoneVisible(true);
-                setSummaryStatusHint('拖动像素人到电脑热区即可触发总结', 'info');
+                setSummaryStatusHint('拖动像素人到电脑屏幕/桌面高亮区域即可触发总结', 'info');
                 gameObject.setDepth(3001);
                 const rec = guestSprites[gameObject.__teamAgentId];
                 if (rec && rec.nameText) rec.nameText.setDepth(3002);
             });
 
-            game.input.on('drag', (_pointer, gameObject, dragX, dragY) => {
+            game.input.on('drag', (pointer, gameObject, dragX, dragY) => {
                 if (!gameObject || !gameObject.__teamRoleId) return;
+                lastPointerWorld = {
+                    x: Number.isFinite(pointer.worldX) ? pointer.worldX : dragX,
+                    y: Number.isFinite(pointer.worldY) ? pointer.worldY : dragY
+                };
                 gameObject.x = dragX;
                 gameObject.y = dragY;
                 const rec = guestSprites[gameObject.__teamAgentId];
@@ -5100,23 +5210,31 @@ function toggleBrokerPanel() {
                     rec.nameText.x = dragX;
                     rec.nameText.y = dragY - 120;
                 }
-                setSummaryDropzoneHot(isInComputerDropZone(dragX, dragY));
+                const hot = isInComputerDropZone(dragX, dragY) || isInComputerDropZone(lastPointerWorld.x, lastPointerWorld.y);
+                setSummaryDropzoneHot(hot);
             });
 
-            game.input.on('dragend', async (_pointer, gameObject) => {
+            game.input.on('dragend', (pointer, gameObject) => {
                 if (!gameObject || !gameObject.__teamRoleId) return;
                 const roleId = gameObject.__teamRoleId;
-                const hit = isInComputerDropZone(gameObject.x, gameObject.y);
+                const px = Number.isFinite(pointer.worldX) ? pointer.worldX : lastPointerWorld.x;
+                const py = Number.isFinite(pointer.worldY) ? pointer.worldY : lastPointerWorld.y;
+                const hit = isInComputerDropZone(gameObject.x, gameObject.y) || isInComputerDropZone(px, py);
+                isDraggingTeamSprite = false;
                 setSummaryDropzoneHot(false);
                 setSummaryDropzoneVisible(false);
+                // 先回归角色位置，避免“卡在电脑前”的视觉卡顿。
+                renderGuestAgentsInScene();
                 if (hit) {
                     dragDropTriggered = true;
-                    await triggerOneClickSummary(roleId);
+                    triggerOneClickSummary(roleId).catch((e) => {
+                        console.error('triggerOneClickSummary failed:', e);
+                        setSummaryStatusHint('触发失败，请重试（可拖到电脑屏幕/桌面高亮区域）', 'warn');
+                    });
                 } else {
-                    setSummaryStatusHint('未命中电脑热区，未触发总结', 'warn');
-                    showSummaryBubble('未命中电脑热区');
+                    setSummaryStatusHint('未命中，请拖到电脑屏幕/桌面高亮区域', 'warn');
+                    showSummaryBubble('未命中，请拖到电脑屏幕/桌面高亮区域');
                 }
-                renderGuestAgentsInScene();
                 draggingRoleId = null;
             });
 
