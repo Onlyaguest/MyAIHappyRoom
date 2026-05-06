@@ -1353,7 +1353,7 @@
     <div id="main-stage">
         <div id="game-container">
             <div id="game-skeleton"><div class="hint">正在进入像素办公室…</div></div>
-            <div id="summary-dropzone">把角色卡片拖到电脑前<br/>触发一键总结</div>
+            <div id="summary-dropzone">拖角色卡片或像素人到电脑前<br/>触发一键总结</div>
             <div id="summary-bubble"></div>
             <div id="status-text">加载中...</div>
         </div>
@@ -1949,6 +1949,7 @@
         let lastTeamRolesFetch = 0;
         const TEAM_ROLES_FETCH_INTERVAL = 4000;
         const ROLE_STATE_SEQUENCE = ['idle', 'writing', 'researching', 'executing', 'syncing', 'error'];
+        const SCENE_SUMMARY_DROP_ZONE = { x1: 110, y1: 230, x2: 360, y2: 450 };
         const TEAM_ROLE_DEFAULTS = [
             { roleId: 'pm', name: 'PM', role: 'Product / Project Manager', state: 'syncing', note: '拆分任务与验收口径', updated_at: new Date().toISOString() },
             { roleId: 'builder', name: 'Builder', role: 'Developer', state: 'executing', note: '实现功能与联调', updated_at: new Date().toISOString() },
@@ -3652,6 +3653,22 @@ function toggleBrokerPanel() {
             return [...realVisitors, ...demoVisitors];
         }
 
+        function getTeamRoleSceneActors() {
+            const roles = normalizeTeamRoles(teamRoles);
+            return roles.map((role) => {
+                const st = normalizeState(role.state || 'idle');
+                return {
+                    agentId: `team_role_${role.roleId}`,
+                    name: role.name || String(role.roleId || '').toUpperCase(),
+                    state: st,
+                    area: st === 'error' ? 'error' : (st === 'idle' ? 'breakroom' : 'writing'),
+                    isTeamRole: true,
+                    roleId: role.roleId,
+                    bubbleText: role.note || ''
+                };
+            });
+        }
+
         function renderGuestAgentList() {
             const list = document.getElementById('guest-agent-list');
             if (!list) return;
@@ -3720,6 +3737,42 @@ function toggleBrokerPanel() {
                 error: '异常'
             };
             return stateMap[state] || state || '待命';
+        }
+
+        function stateColor(state) {
+            const colorMap = {
+                idle: '#cbd5e1',
+                writing: '#dbeafe',
+                researching: '#cffafe',
+                executing: '#d1fae5',
+                syncing: '#ede9fe',
+                error: '#fee2e2'
+            };
+            return colorMap[state] || '#ffffff';
+        }
+
+        function teamRoleTag(roleId) {
+            const tagMap = {
+                pm: 'PM',
+                builder: 'DEV',
+                reviewer: 'QA'
+            };
+            return tagMap[String(roleId || '').toLowerCase()] || 'AGENT';
+        }
+
+        function getSceneActorNameText(agent) {
+            if (!agent || !agent.isTeamRole) return (agent && agent.name) || '访客';
+            const st = stateLabel(normalizeState(agent.state || 'idle'));
+            return `${agent.name} [${teamRoleTag(agent.roleId)} · ${st}]`;
+        }
+
+        function isInComputerDropZone(x, y) {
+            return (
+                x >= SCENE_SUMMARY_DROP_ZONE.x1 &&
+                x <= SCENE_SUMMARY_DROP_ZONE.x2 &&
+                y >= SCENE_SUMMARY_DROP_ZONE.y1 &&
+                y <= SCENE_SUMMARY_DROP_ZONE.y2
+            );
         }
 
         function relativeTimeLabel(isoStr) {
@@ -3832,6 +3885,7 @@ function toggleBrokerPanel() {
             }
 
             renderTeamRoleList();
+            if (game) renderGuestAgentsInScene();
             const el = document.querySelector(`.team-role-item[data-role-id="${roleId}"]`);
             if (el) {
                 el.classList.add('state-flash');
@@ -3947,7 +4001,7 @@ function toggleBrokerPanel() {
             draggingRoleId = roleId;
             dragDropTriggered = false;
             setSummaryDropzoneVisible(true);
-            setSummaryStatusHint('拖到电脑热区即可触发总结', 'info');
+            setSummaryStatusHint('拖卡片或像素人到电脑热区即可触发总结', 'info');
             const card = event.target && event.target.closest ? event.target.closest('.team-role-item') : null;
             if (card) card.classList.add('dragging');
             if (event.dataTransfer) {
@@ -3982,6 +4036,7 @@ function toggleBrokerPanel() {
                 console.warn('fetchTeamRoles fallback defaults:', e);
             }
             renderTeamRoleList();
+            if (game) renderGuestAgentsInScene();
         }
 
         // 暴露给外部脚本的状态更新入口（可被后续 state API / 工具调用）
@@ -4057,10 +4112,12 @@ function toggleBrokerPanel() {
         function renderGuestAgentsInScene() {
             if (!game) return;
             const visitors = getMergedVisitors();
+            const teamActors = getTeamRoleSceneActors();
+            const sceneActors = [...teamActors, ...visitors];
             const seenIds = new Set();
             let idxBreak = 0, idxWrite = 0, idxError = 0;
 
-            visitors.forEach(agent => {
+            sceneActors.forEach(agent => {
                 const id = agent.agentId;
                 seenIds.add(id);
 
@@ -4128,16 +4185,24 @@ function toggleBrokerPanel() {
                     const yOffset = (DEMO_MODE && (agent.agentId === 'demo_mercury' || agent.name === '水星')) ? 10 : 0;
 
                     const nameTextY = isDemo ? ((p.y + yOffset) - 80) : ((p.y + yOffset) - 120);
-                    const nameText = game.add.text(p.x, nameTextY, agent.name || '访客', {
+                    const nameText = game.add.text(p.x, nameTextY, getSceneActorNameText(agent), {
                         fontFamily: 'ArkPixel, monospace',
                         fontSize: isDemo ? '16px' : '15px',
-                        fill: '#ffffff',
+                        fill: agent.isTeamRole ? stateColor(normalizeState(agent.state || 'idle')) : '#ffffff',
                         stroke: '#000',
                         strokeThickness: 3
                     }).setOrigin(0.5);
                     nameText.setDepth(2601);
 
-                    guestSprites[id] = { sprite, nameText };
+                    // Team roles are draggable in-scene for one-click summary trigger.
+                    if (agent.isTeamRole) {
+                        sprite.setInteractive({ useHandCursor: true });
+                        game.input.setDraggable(sprite, true);
+                        sprite.__teamRoleId = agent.roleId;
+                        sprite.__teamAgentId = id;
+                    }
+
+                    guestSprites[id] = { sprite, nameText, isTeamRole: !!agent.isTeamRole, roleId: agent.roleId || null, state: normalizeState(agent.state || 'idle') };
                 } else {
                     const g = guestSprites[id];
                     const yOffset = (DEMO_MODE && (agent.agentId === 'demo_mercury' || agent.name === '水星')) ? 10 : 0;
@@ -4177,7 +4242,15 @@ function toggleBrokerPanel() {
                         g.nameText.y = (p.y + yOffset) - 120;
                     }
 
-                    g.nameText.setText(agent.name || '访客');
+                    g.isTeamRole = !!agent.isTeamRole;
+                    g.roleId = agent.roleId || g.roleId || null;
+                    g.state = normalizeState(agent.state || 'idle');
+                    g.nameText.setText(getSceneActorNameText(agent));
+                    if (g.isTeamRole && g.nameText && g.nameText.setColor) {
+                        g.nameText.setColor(stateColor(g.state));
+                    } else if (g.nameText && g.nameText.setColor) {
+                        g.nameText.setColor('#ffffff');
+                    }
                 }
             });
 
@@ -4221,9 +4294,12 @@ function toggleBrokerPanel() {
                 syncing: ['同步中，马上更新状态', '正在同步进度到系统', '数据同步中请稍候'],
                 error: ['我在 bug 区排查问题', '检测到异常，正在修复', '报警中，先定位再处理']
             };
-            const agentState = (guestAgents.find(a => a.agentId === id) || {}).state || 'idle';
+            const teamActor = getTeamRoleSceneActors().find(a => a.agentId === id);
+            const agentState = (teamActor && teamActor.state) || (guestAgents.find(a => a.agentId === id) || {}).state || 'idle';
             const thoughts = statusThoughtsMap[agentState] || statusThoughtsMap.idle;
-            const text = (demoVisitor && demoVisitor.bubbleText) ? demoVisitor.bubbleText : thoughts[Math.floor(Math.random() * thoughts.length)];
+            const text = (demoVisitor && demoVisitor.bubbleText)
+                ? demoVisitor.bubbleText
+                : ((teamActor && teamActor.bubbleText) ? teamActor.bubbleText : thoughts[Math.floor(Math.random() * thoughts.length)]);
 
             if (guestBubbles[id]) {
                 guestBubbles[id].destroy();
@@ -4999,6 +5075,49 @@ function toggleBrokerPanel() {
                 // Position overlay next to mouse
                 coordsOverlay.style.left = (pointer.x + 18) + 'px';
                 coordsOverlay.style.top = (pointer.y + 18) + 'px';
+            });
+
+            // Team-role pixel people: drag in scene to trigger one-click summary.
+            game.input.on('dragstart', (_pointer, gameObject) => {
+                if (!gameObject || !gameObject.__teamRoleId) return;
+                isPanning = false;
+                panStart = null;
+                draggingRoleId = gameObject.__teamRoleId;
+                dragDropTriggered = false;
+                setSummaryDropzoneVisible(true);
+                setSummaryStatusHint('拖动像素人到电脑热区即可触发总结', 'info');
+                gameObject.setDepth(3001);
+                const rec = guestSprites[gameObject.__teamAgentId];
+                if (rec && rec.nameText) rec.nameText.setDepth(3002);
+            });
+
+            game.input.on('drag', (_pointer, gameObject, dragX, dragY) => {
+                if (!gameObject || !gameObject.__teamRoleId) return;
+                gameObject.x = dragX;
+                gameObject.y = dragY;
+                const rec = guestSprites[gameObject.__teamAgentId];
+                if (rec && rec.nameText) {
+                    rec.nameText.x = dragX;
+                    rec.nameText.y = dragY - 120;
+                }
+                setSummaryDropzoneHot(isInComputerDropZone(dragX, dragY));
+            });
+
+            game.input.on('dragend', async (_pointer, gameObject) => {
+                if (!gameObject || !gameObject.__teamRoleId) return;
+                const roleId = gameObject.__teamRoleId;
+                const hit = isInComputerDropZone(gameObject.x, gameObject.y);
+                setSummaryDropzoneHot(false);
+                setSummaryDropzoneVisible(false);
+                if (hit) {
+                    dragDropTriggered = true;
+                    await triggerOneClickSummary(roleId);
+                } else {
+                    setSummaryStatusHint('未命中电脑热区，未触发总结', 'warn');
+                    showSummaryBubble('未命中电脑热区');
+                }
+                renderGuestAgentsInScene();
+                draggingRoleId = null;
             });
 
             // 加载昨日 memo
