@@ -2446,6 +2446,7 @@
         const PRESENTATION_SOURCE_TYPES = new Set(['none', 'link', 'file']);
         const PRESENTATION_MIME_PDF = 'application/pdf';
         const PRESENTATION_FETCH_INTERVAL = 6000;
+        const FIREPLACE_BOARD_SUSPENDED = true;
         let presentationBoardState = {
             sourceType: 'none',
             sourceUrl: '',
@@ -5081,6 +5082,14 @@ function toggleBrokerPanel() {
             return s.sourceTitle || s.fileName || s.sourceUrl || '当前项目看板';
         }
 
+        function applyFireplaceBoardSuspendMode() {
+            if (!FIREPLACE_BOARD_SUSPENDED) return;
+            const stage = document.getElementById('fireplace-board-stage');
+            const panel = document.getElementById('board-control-panel');
+            if (stage) stage.style.display = 'none';
+            if (panel) panel.style.display = 'none';
+        }
+
         function renderPresentationBoard() {
             presentationBoardState = normalizePresentationBoardState(presentationBoardState);
             const state = presentationBoardState;
@@ -6485,8 +6494,11 @@ function toggleBrokerPanel() {
             loadMemo();
             bindSummaryDropzone();
             initBoardUi();
+            applyFireplaceBoardSuspendMode();
             fetchTeamRoles();
-            fetchPresentationBoard();
+            if (!FIREPLACE_BOARD_SUSPENDED) {
+                fetchPresentationBoard();
+            }
             fetchRoleSkins();
 
             fetchStatus();
@@ -6497,7 +6509,7 @@ function toggleBrokerPanel() {
             if (time - lastFetch > FETCH_INTERVAL) { fetchStatus(); lastFetch = time; }
             if (time - lastGuestAgentsFetch > GUEST_AGENTS_FETCH_INTERVAL) { fetchGuestAgents(); lastGuestAgentsFetch = time; }
             if (time - lastTeamRolesFetch > TEAM_ROLES_FETCH_INTERVAL) { fetchTeamRoles(); lastTeamRolesFetch = time; }
-            if (time - lastPresentationFetch > PRESENTATION_FETCH_INTERVAL) {
+            if (!FIREPLACE_BOARD_SUSPENDED && time - lastPresentationFetch > PRESENTATION_FETCH_INTERVAL) {
                 fetchPresentationBoard({ quiet: true });
                 lastPresentationFetch = time;
             }
