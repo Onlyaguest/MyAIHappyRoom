@@ -151,8 +151,8 @@
             position: absolute;
             left: 24px;
             top: 96px;
-            width: 500px;
-            height: 390px;
+            width: 360px;
+            height: 280px;
             border: 2px dashed rgba(125, 211, 252, 0.85);
             border-radius: 12px;
             background: rgba(14, 28, 52, 0.28);
@@ -1425,9 +1425,9 @@
             }
             #summary-dropzone {
                 left: 4vw;
-                top: 20vh;
-                width: 74vw;
-                height: 44vh;
+                top: 24vh;
+                width: 58vw;
+                height: 32vh;
                 font-size: 11px;
             }
             #summary-bubble {
@@ -5234,9 +5234,7 @@ function toggleBrokerPanel() {
                 let p = fallbackPoint;
                 if (agent.isTeamRole && teamRolePinnedPositions[id]) {
                     const pin = teamRolePinnedPositions[id];
-                    if (isPointInArea(area, pin.x, pin.y, 16)) {
-                        p = { x: pin.x, y: pin.y };
-                    }
+                    p = { x: pin.x, y: pin.y };
                 }
                 const nameOffset = isDemo ? 80 : (agent.isPresenter ? 98 : 120);
 
