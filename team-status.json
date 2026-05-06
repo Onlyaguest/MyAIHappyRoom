@@ -1,0 +1,28 @@
+{
+  "roles": [
+    {
+      "roleId": "pm",
+      "name": "PM",
+      "role": "Product / Project Manager",
+      "state": "syncing",
+      "note": "拆分任务与验收口径",
+      "updated_at": "2026-05-06T09:59:07.691179"
+    },
+    {
+      "roleId": "builder",
+      "name": "Builder",
+      "role": "Developer",
+      "state": "executing",
+      "note": "实现功能与联调",
+      "updated_at": "2026-05-06T09:59:07.691179"
+    },
+    {
+      "roleId": "reviewer",
+      "name": "Reviewer",
+      "role": "QA",
+      "state": "researching",
+      "note": "验证用例与回归风险",
+      "updated_at": "2026-05-06T09:59:07.691179"
+    }
+  ]
+}
