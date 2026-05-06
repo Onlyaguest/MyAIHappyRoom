@@ -212,11 +212,29 @@
             transform: translateX(-50%);
             border: 3px solid #2f3b52;
             border-radius: 10px;
-            background: rgba(6, 10, 20, 0.86);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
-            z-index: 24;
+            background: rgba(6, 10, 20, 0.92);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.52);
+            z-index: 34;
             overflow: hidden;
             pointer-events: auto;
+        }
+        #fireplace-board-entry-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 18px;
+            min-width: 42px;
+            padding: 0 6px;
+            border: 1px solid #facc15;
+            border-radius: 9px;
+            color: #fde68a;
+            font-size: 9px;
+            background: rgba(234, 179, 8, 0.15);
+            animation: boardPulse 1.8s ease-in-out infinite;
+        }
+        @keyframes boardPulse {
+            0%, 100% { opacity: .72; }
+            50% { opacity: 1; }
         }
         #fireplace-board-header {
             height: 30px;
@@ -1128,6 +1146,61 @@
             font-size: 10px;
             line-height: 1.4;
         }
+        #role-skin-panel {
+            border: 1px solid #334155;
+            border-radius: 6px;
+            background: #0b1220;
+            padding: 7px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        #role-skin-title {
+            color: #facc15;
+            font-size: 11px;
+        }
+        .role-skin-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .role-skin-row label {
+            width: 56px;
+            color: #cbd5e1;
+            font-size: 10px;
+            flex-shrink: 0;
+        }
+        .role-skin-row select,
+        .role-skin-row input {
+            flex: 1;
+            min-width: 90px;
+            background: #0f172a;
+            color: #e2e8f0;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            padding: 3px 6px;
+            font-family: 'ArkPixel', monospace;
+            font-size: 10px;
+        }
+        .role-skin-row button {
+            border: 1px solid #475569;
+            border-radius: 4px;
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 4px 6px;
+            font-family: 'ArkPixel', monospace;
+            font-size: 10px;
+            cursor: pointer;
+        }
+        .role-skin-row button:hover {
+            border-color: #60a5fa;
+            background: #0f172a;
+        }
+        #role-skin-hint {
+            color: #94a3b8;
+            font-size: 10px;
+            line-height: 1.4;
+        }
         .guest-agent-item {
             display: flex;
             align-items: center;
@@ -1254,6 +1327,14 @@
             position: relative;
             left: -40px; /* move date left by 40px */
             top: -10px;
+        }
+        #owner-cat-status {
+            color: #3b3b32;
+            font-size: 10px;
+            position: relative;
+            left: 100px;
+            top: -8px;
+            margin-bottom: 4px;
         }
         #memo-content {
             color: #3b3b32;
@@ -1514,6 +1595,7 @@
             <div id="fireplace-board-stage">
                 <div id="fireplace-board-header">
                     <span id="fireplace-board-title">壁炉展示看板</span>
+                    <span id="fireplace-board-entry-badge">入口</span>
                     <span id="fireplace-board-status">未加载内容</span>
                 </div>
                 <div id="fireplace-board-body">
@@ -1544,6 +1626,7 @@
         <div id="memo-panel">
             <div id="memo-title">昨 日 小 记</div>
             <div id="memo-date"></div>
+            <div id="owner-cat-status">房主状态猫：待命</div>
             <div class="memo-decoration">─ ─ ─ ─ ─</div>
             <div id="memo-content">
                 <div id="memo-placeholder">加载中...</div>
@@ -1575,6 +1658,25 @@
                     <span id="summary-status-hint">拖到电脑前触发</span>
                 </div>
                 <div id="summary-content">暂未生成总结。</div>
+            </div>
+            <div id="role-skin-panel">
+                <div id="role-skin-title">角色皮肤配置</div>
+                <div class="role-skin-row">
+                    <label>PM</label>
+                    <select id="role-skin-pm"></select>
+                    <button onclick="saveRoleSkin('pm')">保存</button>
+                </div>
+                <div class="role-skin-row">
+                    <label>Builder</label>
+                    <select id="role-skin-builder"></select>
+                    <button onclick="saveRoleSkin('builder')">保存</button>
+                </div>
+                <div class="role-skin-row">
+                    <label>Reviewer</label>
+                    <select id="role-skin-reviewer"></select>
+                    <button onclick="saveRoleSkin('reviewer')">保存</button>
+                </div>
+                <div id="role-skin-hint">可先在装修抽屉替换 guest_anim_* 素材，再在这里给各角色单独绑定。</div>
             </div>
             <div id="board-control-panel">
                 <div id="board-control-title">壁炉看板控制</div>
@@ -2156,12 +2258,26 @@
         let lastSeenGuestIds = new Set(); // 用于检测新加入的访客，触发欢迎气泡
         let guestWelcomeInitialized = false;
         let teamRoles = [];
+        let roleSkins = [];
+        let lastRoleSkinsFetch = 0;
+        const ROLE_SKINS_FETCH_INTERVAL = 7000;
         let lastTeamRolesFetch = 0;
         const TEAM_ROLES_FETCH_INTERVAL = 4000;
         const ROLE_STATE_SEQUENCE = ['idle', 'writing', 'researching', 'executing', 'syncing', 'error'];
+        const ROLE_SKIN_DEFAULTS = {
+            pm: 'guest_anim_1',
+            builder: 'guest_anim_2',
+            reviewer: 'guest_anim_3'
+        };
+        const ROLE_SKIN_OPTIONS = [
+            'guest_anim_1', 'guest_anim_2', 'guest_anim_3', 'guest_anim_4', 'guest_anim_5', 'guest_anim_6',
+            'guest_role_1', 'guest_role_2', 'guest_role_3', 'guest_role_4', 'guest_role_5', 'guest_role_6'
+        ];
         const SCENE_SUMMARY_DROP_ZONE = { x1: 70, y1: 170, x2: 430, y2: 540 };
         const SCENE_COMPUTER_CENTER = { x: 218, y: 417 };
         const SCENE_COMPUTER_HIT_RADIUS = { x: 185, y: 165 };
+        const AREA_GRID_STEP_X = 32;
+        const AREA_GRID_STEP_Y = 26;
         const TEAM_ROLE_DEFAULTS = [
             { roleId: 'pm', name: 'PM', role: 'Product / Project Manager', state: 'syncing', note: '拆分任务与验收口径', updated_at: new Date().toISOString() },
             { roleId: 'builder', name: 'Builder', role: 'Developer', state: 'executing', note: '实现功能与联调', updated_at: new Date().toISOString() },
@@ -2171,6 +2287,22 @@
         let dragDropTriggered = false;
         let lastPointerWorld = { x: 0, y: 0 };
         let isDraggingTeamSprite = false;
+        let teamRolePinnedPositions = {};
+        const OWNER_CAT_STATES = ['idle', 'working', 'syncing', 'error'];
+        const OWNER_CAT_STATE_LABEL = {
+            idle: '待命',
+            working: '工作中',
+            syncing: '同步中',
+            error: '异常'
+        };
+        const OWNER_CAT_FRAME_RANGES = {
+            idle: [0, 3],
+            working: [4, 7],
+            syncing: [8, 11],
+            error: [12, 15]
+        };
+        let ownerCatState = 'idle';
+        let lastOwnerMainState = 'idle';
         const PRESENTATION_SOURCE_TYPES = new Set(['none', 'link', 'file']);
         const PRESENTATION_MIME_PDF = 'application/pdf';
         const PRESENTATION_FETCH_INTERVAL = 6000;
@@ -3885,8 +4017,150 @@ function toggleBrokerPanel() {
             return [...realVisitors, ...demoVisitors];
         }
 
+        function hashStringNumber(text) {
+            const s = String(text || '');
+            let hash = 0;
+            for (let i = 0; i < s.length; i++) {
+                hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
+            }
+            return Math.abs(hash);
+        }
+
+        function normalizeRoleSkins(input) {
+            const defaults = ['pm', 'builder', 'reviewer'].map((rid) => ({
+                roleId: rid,
+                skin: ROLE_SKIN_DEFAULTS[rid],
+                avatar: ROLE_SKIN_DEFAULTS[rid],
+                animKey: ROLE_SKIN_DEFAULTS[rid],
+                updated_at: new Date().toISOString()
+            }));
+            const byId = {};
+            defaults.forEach((r) => { byId[r.roleId] = { ...r }; });
+            const rows = Array.isArray(input) ? input : [];
+            rows.forEach((row) => {
+                if (!row || typeof row !== 'object') return;
+                const rid = String(row.roleId || '').trim().toLowerCase();
+                if (!byId[rid]) return;
+                const val = String(row.animKey || row.avatar || row.skin || byId[rid].skin).trim() || byId[rid].skin;
+                byId[rid] = {
+                    ...byId[rid],
+                    skin: val,
+                    avatar: val,
+                    animKey: val,
+                    updated_at: row.updated_at || byId[rid].updated_at
+                };
+            });
+            return defaults.map((d) => byId[d.roleId] || d);
+        }
+
+        function getRoleSkinMap() {
+            const rows = normalizeRoleSkins(roleSkins);
+            const out = {};
+            rows.forEach((r) => { out[r.roleId] = r.animKey || r.avatar || r.skin || ROLE_SKIN_DEFAULTS[r.roleId]; });
+            return out;
+        }
+
+        function renderRoleSkinPanel() {
+            const rows = normalizeRoleSkins(roleSkins);
+            const byId = {};
+            rows.forEach((r) => { byId[r.roleId] = r; });
+            ['pm', 'builder', 'reviewer'].forEach((rid) => {
+                const sel = document.getElementById(`role-skin-${rid}`);
+                if (!sel) return;
+                const current = (byId[rid] && byId[rid].animKey) || ROLE_SKIN_DEFAULTS[rid];
+                const options = ROLE_SKIN_OPTIONS.map((k) => `<option value="${k}">${k}</option>`).join('');
+                sel.innerHTML = options;
+                if (ROLE_SKIN_OPTIONS.includes(current)) sel.value = current;
+                else sel.value = ROLE_SKIN_DEFAULTS[rid];
+            });
+        }
+
+        async function fetchRoleSkins(options = {}) {
+            const { quiet = false } = options || {};
+            try {
+                const res = await fetch('/role-skins?t=' + Date.now(), { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok || !data.ok || !Array.isArray(data.roles)) {
+                    throw new Error((data && data.msg) || `HTTP ${res.status}`);
+                }
+                roleSkins = normalizeRoleSkins(data.roles);
+            } catch (e) {
+                roleSkins = normalizeRoleSkins(roleSkins);
+                if (!quiet) console.warn('fetchRoleSkins fallback defaults:', e);
+            }
+            renderRoleSkinPanel();
+            if (game) renderGuestAgentsInScene();
+        }
+
+        async function saveRoleSkin(roleId) {
+            const rid = String(roleId || '').trim().toLowerCase();
+            if (!['pm', 'builder', 'reviewer'].includes(rid)) return;
+            const sel = document.getElementById(`role-skin-${rid}`);
+            const skinKey = String(sel ? sel.value : '').trim();
+            if (!skinKey) return;
+            const hint = document.getElementById('role-skin-hint');
+            if (hint) {
+                hint.textContent = `${rid.toUpperCase()} 皮肤保存中...`;
+                hint.style.color = '#93c5fd';
+            }
+            try {
+                const res = await fetch('/role-skins', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roleId: rid, animKey: skinKey })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok || !Array.isArray(data.roles)) {
+                    throw new Error((data && data.msg) || `HTTP ${res.status}`);
+                }
+                roleSkins = normalizeRoleSkins(data.roles);
+                renderRoleSkinPanel();
+                if (hint) {
+                    hint.textContent = `${rid.toUpperCase()} 已绑定 ${skinKey}`;
+                    hint.style.color = '#86efac';
+                }
+                if (game) renderGuestAgentsInScene();
+            } catch (e) {
+                if (hint) {
+                    hint.textContent = `保存失败：${e.message || e}`;
+                    hint.style.color = '#fca5a5';
+                }
+            }
+        }
+
+        window.saveRoleSkin = saveRoleSkin;
+
+        function ownerCatStateFromMainState(mainState) {
+            const st = normalizeState(mainState || 'idle');
+            if (st === 'error') return 'error';
+            if (st === 'syncing') return 'syncing';
+            if (st === 'idle') return 'idle';
+            return 'working';
+        }
+
+        function updateOwnerCatStatusLabel(state) {
+            const el = document.getElementById('owner-cat-status');
+            if (!el) return;
+            const s = OWNER_CAT_STATES.includes(state) ? state : 'idle';
+            el.textContent = `房主状态猫：${OWNER_CAT_STATE_LABEL[s] || s}`;
+        }
+
+        function setCatVisualByOwnerState(mainState) {
+            const next = ownerCatStateFromMainState(mainState);
+            ownerCatState = next;
+            updateOwnerCatStatusLabel(next);
+            if (!window.catSprite || !window.catsFrameCount) return;
+            const [from, to] = OWNER_CAT_FRAME_RANGES[next] || OWNER_CAT_FRAME_RANGES.idle;
+            const maxFrame = Math.max(0, Number(window.catsFrameCount) - 1);
+            const start = Math.max(0, Math.min(maxFrame, from));
+            const end = Math.max(start, Math.min(maxFrame, to));
+            const frame = start + Math.floor(Math.random() * (end - start + 1));
+            window.catSprite.setFrame(frame);
+        }
+
         function getTeamRoleSceneActors() {
             const roles = normalizeTeamRoles(teamRoles);
+            const skinByRole = getRoleSkinMap();
             const presenterRoleId = String((presentationBoardState && presentationBoardState.presenterRoleId) || '').trim().toLowerCase();
             const presenterTopic = String(
                 (presentationBoardState && (
@@ -3909,6 +4183,7 @@ function toggleBrokerPanel() {
                     isTeamRole: true,
                     isPresenter,
                     roleId: role.roleId,
+                    avatar: skinByRole[role.roleId] || ROLE_SKIN_DEFAULTS[role.roleId] || 'guest_anim_1',
                     bubbleText: isPresenter ? presenterBubble : (role.note || '')
                 };
             });
@@ -4025,26 +4300,14 @@ function toggleBrokerPanel() {
             return inRect || inEllipse;
         }
 
-        function buildNudgeNote(original, triggerName) {
-            const nowText = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-            const base = String(original || '').replace(/^\[催办.*?\]\s*/, '').trim();
-            const prefix = `[催办 ${nowText} by ${triggerName}]`;
-            const suffix = base ? ` ${base}` : ' 请同步你当前负责的进度。';
-            return `${prefix}${suffix}`;
-        }
-
-        async function autoNudgeOwners(triggerRoleId) {
+        function getNudgeOwners(triggerRoleId) {
             const roles = normalizeTeamRoles(teamRoles);
-            const triggerRole = roles.find(r => r.roleId === triggerRoleId);
-            const triggerName = triggerRole ? triggerRole.name : 'Builder';
             const targets = roles.filter((r) => r.roleId !== triggerRoleId && r.roleId);
             const nudged = [];
 
             for (const role of targets) {
                 const shouldNudge = role.state !== 'idle' || String(role.note || '').trim().length === 0;
                 if (!shouldNudge) continue;
-                const nextNote = buildNudgeNote(role.note, triggerName);
-                await applyTeamRolePatch(role.roleId, { note: nextNote });
                 nudged.push(role.name || role.roleId);
             }
             return nudged;
@@ -4276,6 +4539,7 @@ function toggleBrokerPanel() {
             setSummaryStatusHint('总结生成中...', 'info');
 
             let summaryText = '';
+            let usedFallback = false;
             try {
                 const res = await fetch('/one-click-summary', {
                     method: 'POST',
@@ -4289,11 +4553,12 @@ function toggleBrokerPanel() {
                 summaryText = String(data.summary);
             } catch (e) {
                 summaryText = buildRuleSummaryText(roles, triggerRoleId);
+                usedFallback = true;
                 console.warn('one-click-summary API failed, fallback local rule summary:', e);
             }
 
             const digest = buildProjectDigest(roles, triggerRoleId);
-            const nudgedOwners = await autoNudgeOwners(triggerRoleId);
+            const nudgedOwners = getNudgeOwners(triggerRoleId);
             const nudgeLine = nudgedOwners.length > 0
                 ? `\n\n推进动作：已催办 ${nudgedOwners.join('、')} 同步当前进展。`
                 : `\n\n推进动作：当前无额外催办对象。`;
@@ -4304,6 +4569,25 @@ function toggleBrokerPanel() {
             const nudgeHint = nudgedOwners.length > 0 ? `，并催办 ${nudgedOwners.join('、')}` : '';
             setSummaryStatusHint(`${triggerName} 于 ${nowText} 触发${nudgeHint}`, 'ok');
             showSummaryBubble(`总结已生成：由 ${triggerName} 触发${nudgeHint}`);
+
+            if (usedFallback) {
+                try {
+                    await fetch('/one-click-summary/record', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            summary: summaryText,
+                            triggerRoleId,
+                            roles,
+                            mode: 'frontend-fallback-v1'
+                        })
+                    });
+                } catch (e) {
+                    console.warn('record fallback summary failed:', e);
+                }
+            }
+            // #18: show latest one-click summaries in Yesterday Notes panel.
+            loadMemo();
         }
 
         function bindSummaryDropzone() {
@@ -4480,6 +4764,7 @@ function toggleBrokerPanel() {
             const state = presentationBoardState;
 
             const headerStatus = document.getElementById('fireplace-board-status');
+            const entryBadge = document.getElementById('fireplace-board-entry-badge');
             const iframe = document.getElementById('fireplace-board-iframe');
             const fallback = document.getElementById('fireplace-board-fallback');
             const openLink = document.getElementById('fireplace-board-open-link');
@@ -4517,6 +4802,7 @@ function toggleBrokerPanel() {
             if (fallbackDesc) fallbackDesc.textContent = '可加载网页链接或上传 PPT/PDF 共享观看';
 
             if (state.sourceType === 'link' && state.sourceUrl) {
+                if (entryBadge) entryBadge.textContent = '网页';
                 headerStatus.textContent = state.sourceTitle || state.sourceUrl;
                 if (iframe && !boardLikelyBlocked(state.sourceUrl)) {
                     iframe.style.display = 'block';
@@ -4535,6 +4821,7 @@ function toggleBrokerPanel() {
                 }
                 pageInfo.textContent = '页码：链接模式';
             } else if (state.sourceType === 'file' && state.fileUrl) {
+                if (entryBadge) entryBadge.textContent = '文件';
                 headerStatus.textContent = state.fileName || '已上传文件';
                 if (filecard) filecard.style.display = 'block';
                 fallback.style.display = 'none';
@@ -4550,7 +4837,8 @@ function toggleBrokerPanel() {
                 pageInfo.textContent = `页码 ${state.currentPage} / ${state.totalPages}`;
                 setBoardUploadHint(`看板状态：文件已上传（${state.fileName || '未命名文件'}）`, 'ok');
             } else {
-                headerStatus.textContent = '未加载内容';
+                if (entryBadge) entryBadge.textContent = '入口';
+                headerStatus.textContent = '空白 · 可粘贴链接/上传PPT';
                 pageInfo.textContent = '页码：-';
                 setBoardUploadHint('看板状态：未加载（支持链接 / PPT / PPTX / PDF）', 'info');
             }
@@ -4774,47 +5062,34 @@ function toggleBrokerPanel() {
             return { x: randomInt(rect.x1, rect.x2), y: randomInt(rect.y1, rect.y2) };
         }
 
-        function getAreaPoint(area, idx) {
-            // 非 demo 访客：仍用固定点位，避免每次轮询都抖动。
-            const map = {
-                breakroom: [
-                    { x: 511, y: 262 },
-                    { x: 841, y: 621 },
-                    { x: 690, y: 470 },
-                    { x: 600, y: 340 },
-                    { x: 770, y: 540 },
-                    { x: 550, y: 420 },
-                    { x: 720, y: 310 },
-                    { x: 650, y: 580 }
-                ],
-                writing: [
-                    { x: 190, y: 526 },
-                    { x: 380, y: 683 },
-                    { x: 300, y: 610 },
-                    { x: 240, y: 570 },
-                    { x: 350, y: 640 },
-                    { x: 160, y: 600 },
-                    { x: 420, y: 560 },
-                    { x: 280, y: 660 }
-                ],
-                error: [
-                    { x: 932, y: 275 },
-                    { x: 1109, y: 327 },
-                    { x: 1020, y: 305 },
-                    { x: 960, y: 340 },
-                    { x: 1070, y: 280 },
-                    { x: 990, y: 260 },
-                    { x: 1050, y: 350 },
-                    { x: 940, y: 310 }
-                ],
-                presenter: [
-                    { x: 760, y: 338 },
-                    { x: 828, y: 332 },
-                    { x: 886, y: 346 }
-                ]
-            };
-            const arr = map[area] || map.breakroom;
-            return arr[idx % arr.length];
+        function isPointInArea(area, x, y, margin = 10) {
+            const r = getAreaRect(area);
+            return (
+                x >= (r.x1 - margin) &&
+                x <= (r.x2 + margin) &&
+                y >= (r.y1 - margin) &&
+                y <= (r.y2 + margin)
+            );
+        }
+
+        function getAreaPoint(area, idx, stableKey = '') {
+            const r = getAreaRect(area);
+            const width = Math.max(1, r.x2 - r.x1);
+            const height = Math.max(1, r.y2 - r.y1);
+            const cols = Math.max(1, Math.floor(width / AREA_GRID_STEP_X) + 1);
+            const rows = Math.max(1, Math.floor(height / AREA_GRID_STEP_Y) + 1);
+            const total = Math.max(1, cols * rows);
+            const offset = hashStringNumber(stableKey) % total;
+            const slot = (Number(idx || 0) + offset) % total;
+            const col = slot % cols;
+            const row = Math.floor(slot / cols);
+
+            const jitterSeed = hashStringNumber(`${stableKey}:${idx}`);
+            const jitterX = (jitterSeed % 7) - 3;
+            const jitterY = (Math.floor(jitterSeed / 7) % 7) - 3;
+            const x = Math.max(r.x1, Math.min(r.x2, r.x1 + col * AREA_GRID_STEP_X + jitterX));
+            const y = Math.max(r.y1, Math.min(r.y2, r.y1 + row * AREA_GRID_STEP_Y + jitterY));
+            return { x, y };
         }
 
         function renderGuestAgentsInScene() {
@@ -4839,9 +5114,16 @@ function toggleBrokerPanel() {
                         : area === 'presenter'
                             ? idxPresenter++
                             : idxWrite++;
-                const p = isDemo
+                const fallbackPoint = isDemo
                     ? randomPointInRect(getAreaRect(area))
-                    : getAreaPoint(area, idx);
+                    : getAreaPoint(area, idx, id);
+                let p = fallbackPoint;
+                if (agent.isTeamRole && teamRolePinnedPositions[id]) {
+                    const pin = teamRolePinnedPositions[id];
+                    if (isPointInArea(area, pin.x, pin.y, 16)) {
+                        p = { x: pin.x, y: pin.y };
+                    }
+                }
                 const nameOffset = isDemo ? 80 : (agent.isPresenter ? 98 : 120);
 
                 if (!guestSprites[id]) {
@@ -5493,8 +5775,13 @@ function toggleBrokerPanel() {
             // Expose to global for click handler
             window.catSprite = cat;
             window.catsFrameCount = catsFrameCount;
+            setCatVisualByOwnerState(lastOwnerMainState);
             cat.on('pointerdown', () => {
-                const next = Math.floor(Math.random() * window.catsFrameCount);
+                const [from, to] = OWNER_CAT_FRAME_RANGES[ownerCatState] || OWNER_CAT_FRAME_RANGES.idle;
+                const maxFrame = Math.max(0, Number(window.catsFrameCount) - 1);
+                const start = Math.max(0, Math.min(maxFrame, from));
+                const end = Math.max(start, Math.min(maxFrame, to));
+                const next = start + Math.floor(Math.random() * (end - start + 1));
                 window.catSprite.setFrame(next);
             });
 
@@ -5846,9 +6133,13 @@ function toggleBrokerPanel() {
             game.input.on('dragend', (pointer, gameObject) => {
                 if (!gameObject || !gameObject.__teamRoleId) return;
                 const roleId = gameObject.__teamRoleId;
+                const agentId = gameObject.__teamAgentId;
                 const px = Number.isFinite(pointer.worldX) ? pointer.worldX : lastPointerWorld.x;
                 const py = Number.isFinite(pointer.worldY) ? pointer.worldY : lastPointerWorld.y;
                 const hit = isInComputerDropZone(gameObject.x, gameObject.y) || isInComputerDropZone(px, py);
+                if (agentId) {
+                    teamRolePinnedPositions[agentId] = { x: gameObject.x, y: gameObject.y, updatedAt: Date.now() };
+                }
                 isDraggingTeamSprite = false;
                 setSummaryDropzoneHot(false);
                 setSummaryDropzoneVisible(false);
@@ -5872,6 +6163,7 @@ function toggleBrokerPanel() {
             bindSummaryDropzone();
             fetchTeamRoles();
             fetchPresentationBoard();
+            fetchRoleSkins();
 
             fetchStatus();
             fetchGuestAgents();
@@ -5884,6 +6176,10 @@ function toggleBrokerPanel() {
             if (time - lastPresentationFetch > PRESENTATION_FETCH_INTERVAL) {
                 fetchPresentationBoard({ quiet: true });
                 lastPresentationFetch = time;
+            }
+            if (time - lastRoleSkinsFetch > ROLE_SKINS_FETCH_INTERVAL) {
+                fetchRoleSkins({ quiet: true });
+                lastRoleSkinsFetch = time;
             }
 
             // 兜底：非 idle 时确保机房动画在播，idle 时静止
@@ -6076,6 +6372,8 @@ function toggleBrokerPanel() {
                             }
                         }
                         const nextState = normalizeState(data.state);
+                        lastOwnerMainState = nextState;
+                        setCatVisualByOwnerState(nextState);
                         const stateInfo = STATES[nextState] || STATES.idle;
                         // If we're mid-transition, don't restart the path every poll
                         const changed = (pendingDesiredState === null) && (nextState !== currentState);
@@ -6271,7 +6569,7 @@ function toggleBrokerPanel() {
             if (!window.catSprite) return;
             if (window.catBubble) { window.catBubble.destroy(); window.catBubble = null; }
             const texts = getBubbleTextsByState('cat');
-            const text = texts[Math.floor(Math.random() * texts.length)];
+            const text = `房主${OWNER_CAT_STATE_LABEL[ownerCatState] || ownerCatState}：${texts[Math.floor(Math.random() * texts.length)]}`;
             const anchorX = window.catSprite.x;
             const anchorY = window.catSprite.y - 60;
             const bg = game.add.rectangle(anchorX, anchorY, text.length * 10 + 20, 24, 0xfffbeb, 0.95);

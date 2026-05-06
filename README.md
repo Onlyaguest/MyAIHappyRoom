@@ -18,6 +18,9 @@
   - 状态切换入口：角色卡片内 `切换状态` 按钮（同时写入 `/team-status` API）。
   - 角色入场：`PM / Builder / Reviewer` 作为办公室场景内像素人首屏可见，不仅是面板卡片。
   - 一键总结交互：支持拖角色卡片或场景像素人到办公室电脑热区；触发后生成“项目状态 + 催办建议”，并写入总结面板。
+  - Yesterday Notes 联动：一键总结会写入 Yesterday Notes 面板顶部展示（后端持久化记录）。
+  - 角色独立皮肤：支持为 `PM / Builder / Reviewer` 分别绑定角色皮肤（`/role-skins`）。
+  - 房主状态猫：猫猫四态映射主状态（待命/工作/同步/异常），不再只是随机装饰语义。
   - 壁炉展示看板：壁炉上方新增看板，支持链接加载 + PPT/PPTX/PDF 上传（MVP 为文件打开/下载回退），支持指定 `PM/Builder/Reviewer` 进入演讲位。
 
 ### 快速启动（MyAIHappyRoom）
@@ -237,6 +240,9 @@ python3 office-agent-push.py
 | `GET /team-status` | 获取 PM/Builder/Reviewer 团队角色状态 |
 | `POST /team-status` | 更新指定团队角色状态/说明 |
 | `POST /one-click-summary` | 生成一键总结（支持前端规则兜底） |
+| `POST /one-click-summary/record` | 前端兜底时补录一键总结到 Yesterday Notes 数据源 |
+| `GET /role-skins` | 获取 PM/Builder/Reviewer 的角色皮肤绑定 |
+| `POST /role-skins` | 更新指定角色皮肤绑定 |
 | `GET /presentation-board` | 获取壁炉看板状态（链接/文件/演讲位） |
 | `POST /presentation-board` | 更新壁炉看板状态 |
 | `POST /presentation-board/upload` | 上传 `PPT/PPTX/PDF` 到壁炉看板 |

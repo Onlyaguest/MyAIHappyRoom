@@ -62,6 +62,9 @@ HOME_FAVORITES_INDEX_FILE = os.path.join(HOME_FAVORITES_DIR, "index.json")
 HOME_FAVORITES_MAX = 30
 ASSET_POSITIONS_FILE = os.path.join(ROOT_DIR, "asset-positions.json")
 TEAM_STATUS_FILE = os.path.join(ROOT_DIR, "team-status.json")
+ROLE_SKINS_FILE = os.path.join(ROOT_DIR, "role-skins.json")
+ONE_CLICK_SUMMARIES_FILE = os.path.join(ROOT_DIR, "one-click-summaries.json")
+ONE_CLICK_SUMMARY_MAX_RECORDS = int(os.getenv("ONE_CLICK_SUMMARY_MAX_RECORDS", "30"))
 PRESENTATION_BOARD_FILE = os.path.join(ROOT_DIR, "presentation-board.json")
 PRESENTATION_UPLOAD_DIR = os.path.join(ROOT_DIR, "uploads", "presentation-board")
 PRESENTATION_MAX_UPLOAD_BYTES = int(os.getenv("PRESENTATION_MAX_UPLOAD_BYTES", str(30 * 1024 * 1024)))
@@ -435,6 +438,142 @@ def save_team_status(roles):
 
     with open(TEAM_STATUS_FILE, "w", encoding="utf-8") as f:
         json.dump({"roles": final_rows}, f, ensure_ascii=False, indent=2)
+
+
+def _default_role_skins():
+    now = datetime.now().isoformat()
+    return [
+        {"roleId": "pm", "skin": "guest_anim_1", "avatar": "guest_anim_1", "animKey": "guest_anim_1", "updated_at": now},
+        {"roleId": "builder", "skin": "guest_anim_2", "avatar": "guest_anim_2", "animKey": "guest_anim_2", "updated_at": now},
+        {"roleId": "reviewer", "skin": "guest_anim_3", "avatar": "guest_anim_3", "animKey": "guest_anim_3", "updated_at": now},
+    ]
+
+
+def _normalize_skin_key(value, fallback):
+    raw = str(value or "").strip()
+    if not raw:
+        return fallback
+    # only allow simple key formats used by frontend texture keys.
+    safe = re.sub(r"[^a-zA-Z0-9_\-./]", "", raw)
+    return safe or fallback
+
+
+def load_role_skins():
+    defaults = _default_role_skins()
+    by_default = {r["roleId"]: r for r in defaults}
+
+    payload = None
+    if os.path.exists(ROLE_SKINS_FILE):
+        try:
+            with open(ROLE_SKINS_FILE, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            payload = None
+
+    rows = payload.get("roles") if isinstance(payload, dict) else payload if isinstance(payload, list) else None
+    merged = {}
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            rid = str(row.get("roleId") or "").strip().lower()
+            if rid not in by_default:
+                continue
+            base = dict(by_default[rid])
+            skin_key = _normalize_skin_key(row.get("animKey") or row.get("avatar") or row.get("skin"), base["skin"])
+            base.update({
+                "skin": skin_key,
+                "avatar": skin_key,
+                "animKey": skin_key,
+                "updated_at": str(row.get("updated_at") or "").strip() or datetime.now().isoformat(),
+            })
+            merged[rid] = base
+
+    return [merged.get(d["roleId"], d) for d in defaults]
+
+
+def save_role_skins(rows):
+    defaults = {r["roleId"]: r for r in _default_role_skins()}
+    merged = {}
+    for row in (rows or []):
+        if not isinstance(row, dict):
+            continue
+        rid = str(row.get("roleId") or "").strip().lower()
+        if rid not in defaults:
+            continue
+        base = dict(defaults[rid])
+        skin_key = _normalize_skin_key(row.get("animKey") or row.get("avatar") or row.get("skin"), base["skin"])
+        base["skin"] = skin_key
+        base["avatar"] = skin_key
+        base["animKey"] = skin_key
+        base["updated_at"] = str(row.get("updated_at") or "").strip() or datetime.now().isoformat()
+        merged[rid] = base
+
+    final_rows = [merged.get(rid, defaults[rid]) for rid in ("pm", "builder", "reviewer")]
+    with open(ROLE_SKINS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"roles": final_rows}, f, ensure_ascii=False, indent=2)
+    return final_rows
+
+
+def load_one_click_summaries():
+    if not os.path.exists(ONE_CLICK_SUMMARIES_FILE):
+        return {"items": []}
+    try:
+        with open(ONE_CLICK_SUMMARIES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get("items"), list):
+            return data
+    except Exception:
+        pass
+    return {"items": []}
+
+
+def save_one_click_summaries(payload):
+    payload = payload if isinstance(payload, dict) else {"items": []}
+    items = payload.get("items")
+    if not isinstance(items, list):
+        items = []
+    trimmed = items[-max(1, ONE_CLICK_SUMMARY_MAX_RECORDS):]
+    with open(ONE_CLICK_SUMMARIES_FILE, "w", encoding="utf-8") as f:
+        json.dump({"items": trimmed}, f, ensure_ascii=False, indent=2)
+
+
+def append_one_click_summary(summary, trigger_role_id="", roles=None, mode="rule-based-v1"):
+    clean_summary = sanitize_content(str(summary or "").strip())
+    if not clean_summary:
+        return
+    roles = roles if isinstance(roles, list) else []
+    payload = load_one_click_summaries()
+    items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    items.append({
+        "summary": clean_summary,
+        "triggerRoleId": str(trigger_role_id or "").strip().lower(),
+        "generated_at": datetime.now().isoformat(),
+        "mode": str(mode or "").strip() or "rule-based-v1",
+        "roles": roles,
+    })
+    save_one_click_summaries({"items": items})
+
+
+def _format_recent_summaries_for_memo(limit=2):
+    payload = load_one_click_summaries()
+    rows = payload.get("items") if isinstance(payload.get("items"), list) else []
+    if not rows:
+        return ""
+    chosen = rows[-max(1, int(limit)):]
+    lines = ["【一键总结】"]
+    for row in reversed(chosen):
+        ts = str(row.get("generated_at") or "").strip()
+        role = str(row.get("triggerRoleId") or "").strip().lower() or "unknown"
+        try:
+            ts_fmt = datetime.fromisoformat(ts).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            ts_fmt = ts or datetime.now().strftime("%Y-%m-%d %H:%M")
+        role_label = {"pm": "PM", "builder": "Builder", "reviewer": "Reviewer"}.get(role, role)
+        lines.append(f"—— {ts_fmt} · 触发者 {role_label} ——")
+        lines.append(sanitize_content(str(row.get("summary") or "").strip()))
+        lines.append("")
+    return "\n".join(lines).strip()
 
 
 def _default_presentation_board_state():
@@ -1001,6 +1140,10 @@ if not os.path.exists(AGENTS_STATE_FILE):
     save_agents_state(DEFAULT_AGENTS)
 if not os.path.exists(TEAM_STATUS_FILE):
     save_team_status(_default_team_roles())
+if not os.path.exists(ROLE_SKINS_FILE):
+    save_role_skins(_default_role_skins())
+if not os.path.exists(ONE_CLICK_SUMMARIES_FILE):
+    save_one_click_summaries({"items": []})
 os.makedirs(PRESENTATION_UPLOAD_DIR, exist_ok=True)
 if not os.path.exists(PRESENTATION_BOARD_FILE):
     save_presentation_board_state(_default_presentation_board_state())
@@ -1452,6 +1595,8 @@ def one_click_summary():
             lines.append(f"- {r.get('name') or r.get('roleId')}: {role_label}｜{st}｜{note}")
 
         summary = "\n".join(lines)
+        trigger_role_id = str(data.get("triggerRoleId") or "").strip().lower()
+        append_one_click_summary(summary, trigger_role_id=trigger_role_id, roles=roles, mode="rule-based-v1")
         return jsonify({
             "ok": True,
             "mode": "rule-based-v1",
@@ -1459,6 +1604,76 @@ def one_click_summary():
             "summary": summary,
             "roles": roles,
         })
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/one-click-summary/record", methods=["POST"])
+def record_one_click_summary():
+    """Record summary text when frontend had to fallback without backend generation."""
+    try:
+        data = request.get_json(silent=True) or {}
+        summary = str(data.get("summary") or "").strip()
+        if not summary:
+            return jsonify({"ok": False, "msg": "missing summary"}), 400
+        trigger_role_id = str(data.get("triggerRoleId") or "").strip().lower()
+        roles = data.get("roles") if isinstance(data.get("roles"), list) else []
+        mode = str(data.get("mode") or "").strip() or "frontend-fallback-v1"
+        append_one_click_summary(summary, trigger_role_id=trigger_role_id, roles=roles, mode=mode)
+        return jsonify({"ok": True, "recorded_at": datetime.now().isoformat()})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/role-skins", methods=["GET"])
+def get_role_skins():
+    return jsonify({
+        "ok": True,
+        "roles": load_role_skins(),
+        "updated_at": datetime.now().isoformat(),
+    })
+
+
+@app.route("/role-skins", methods=["POST"])
+def set_role_skins():
+    try:
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify({"ok": False, "msg": "invalid json"}), 400
+
+        current = {r.get("roleId"): r for r in load_role_skins()}
+
+        if isinstance(data.get("roles"), list):
+            for row in data.get("roles"):
+                if not isinstance(row, dict):
+                    continue
+                rid = str(row.get("roleId") or "").strip().lower()
+                if rid not in {"pm", "builder", "reviewer"}:
+                    continue
+                skin_key = _normalize_skin_key(row.get("animKey") or row.get("avatar") or row.get("skin"), current[rid]["skin"])
+                current[rid] = {
+                    "roleId": rid,
+                    "skin": skin_key,
+                    "avatar": skin_key,
+                    "animKey": skin_key,
+                    "updated_at": datetime.now().isoformat(),
+                }
+            saved = save_role_skins([current.get("pm"), current.get("builder"), current.get("reviewer")])
+            return jsonify({"ok": True, "roles": saved})
+
+        rid = str(data.get("roleId") or "").strip().lower()
+        if rid not in {"pm", "builder", "reviewer"}:
+            return jsonify({"ok": False, "msg": "roleId must be pm/builder/reviewer"}), 400
+        skin_key = _normalize_skin_key(data.get("animKey") or data.get("avatar") or data.get("skin"), current[rid]["skin"])
+        current[rid] = {
+            "roleId": rid,
+            "skin": skin_key,
+            "avatar": skin_key,
+            "animKey": skin_key,
+            "updated_at": datetime.now().isoformat(),
+        }
+        saved = save_role_skins([current.get("pm"), current.get("builder"), current.get("reviewer")])
+        return jsonify({"ok": True, "role": current[rid], "roles": saved})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
 
@@ -1677,18 +1892,28 @@ def get_yesterday_memo():
                             target_date = f.replace(".md", "")
                             break
         
+        memo_content = ""
         if target_file and os.path.exists(target_file):
             memo_content = extract_memo_from_file(target_file)
+
+        summary_content = _format_recent_summaries_for_memo(limit=2)
+        sections = []
+        if summary_content:
+            sections.append(summary_content)
+        if memo_content:
+            sections.append(memo_content)
+        final_memo = "\n\n".join([s for s in sections if str(s or "").strip()]).strip()
+
+        if final_memo:
             return jsonify({
                 "success": True,
                 "date": target_date,
-                "memo": memo_content
+                "memo": sanitize_content(final_memo),
             })
-        else:
-            return jsonify({
-                "success": False,
-                "msg": "没有找到昨日日记"
-            })
+        return jsonify({
+            "success": False,
+            "msg": "没有找到昨日日记或一键总结"
+        })
     except Exception as e:
         return jsonify({
             "success": False,

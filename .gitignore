@@ -16,6 +16,8 @@ state.json
 agents-state.json
 runtime-config.json
 presentation-board.json
+role-skins.json
+one-click-summaries.json
 *.log
 *.out
 *.pid
