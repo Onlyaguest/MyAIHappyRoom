@@ -1,0 +1,10 @@
+{
+  "ag-crew.co": {
+    "state": "busy",
+    "detail": "ag-crew co is handling task queue"
+  },
+  "daily-manager.co": {
+    "state": "thinking",
+    "detail": "daily-manager co is planning"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "source": {
+    "type": "http_json",
+    "url": "http://127.0.0.1:8080/external-agent-status",
+    "method": "GET",
+    "timeoutSec": 10,
+    "headers": {
+      "X-Bridge-Demo": "replace-me"
+    }
+  },
+  "stateMap": {
+    "busy": "writing",
+    "thinking": "researching",
+    "dead": "error"
+  },
+  "defaultState": "idle",
+  "agents": [
+    {
+      "agentId": "agent_http_001",
+      "name": "HTTP Agent",
+      "crew": "ops-crew",
+      "agent": "co",
+      "sourceKey": "ops-crew.co",
+      "detailTemplate": "{name} | state={state}"
+    }
+  ]
+}

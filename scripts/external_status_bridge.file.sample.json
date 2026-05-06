@@ -1,0 +1,30 @@
+{
+  "source": {
+    "type": "json_file",
+    "path": "./scripts/external_status_input.sample.json"
+  },
+  "stateMap": {
+    "busy": "writing",
+    "thinking": "researching",
+    "dead": "error"
+  },
+  "defaultState": "idle",
+  "agents": [
+    {
+      "agentId": "agent_001",
+      "name": "Agent One",
+      "crew": "ag-crew",
+      "agent": "co",
+      "sourceKey": "ag-crew.co",
+      "detailTemplate": "{name} | mapped={state}"
+    },
+    {
+      "agentId": "agent_002",
+      "name": "Agent Two",
+      "crew": "daily-manager",
+      "agent": "co",
+      "sourceKey": "daily-manager.co",
+      "detailTemplate": "{name} | mapped={state}"
+    }
+  ]
+}
