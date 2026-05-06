@@ -173,8 +173,11 @@
         #summary-dropzone.active {
             opacity: 1;
             transform: scale(1);
-            pointer-events: auto;
+            pointer-events: none;
             box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.35), 0 0 24px rgba(56, 189, 248, 0.35) inset;
+        }
+        #summary-dropzone.active.card-drop-enabled {
+            pointer-events: auto;
         }
         #summary-dropzone.hot {
             border-color: #86efac;
@@ -4382,9 +4385,6 @@ function toggleBrokerPanel() {
         function prependSummaryToMemo(summaryText, triggerName) {
             const memoContent = document.getElementById('memo-content');
             if (!memoContent) return;
-            const marker = `${triggerName || '触发人'}|${String(summaryText || '').slice(0, 120)}`;
-            if (memoContent.dataset.lastSummaryMarker === marker) return;
-            memoContent.dataset.lastSummaryMarker = marker;
 
             const nowLabel = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             const title = `【一键总结 ${nowLabel}】`;
@@ -4489,10 +4489,11 @@ function toggleBrokerPanel() {
             }, 2200);
         }
 
-        function setSummaryDropzoneVisible(active) {
+        function setSummaryDropzoneVisible(active, opts = {}) {
             const dz = document.getElementById('summary-dropzone');
             if (!dz) return;
             dz.classList.toggle('active', !!active);
+            dz.classList.toggle('card-drop-enabled', !!opts.acceptCardDrop);
             if (!active) dz.classList.remove('hot');
         }
 
@@ -4733,7 +4734,7 @@ function toggleBrokerPanel() {
         function onTeamRoleDragStart(event, roleId) {
             draggingRoleId = roleId;
             dragDropTriggered = false;
-            setSummaryDropzoneVisible(true);
+            setSummaryDropzoneVisible(true, { acceptCardDrop: true });
             setSummaryStatusHint('拖卡片或像素人到电脑屏幕/桌面高亮区域即可触发总结', 'info');
             const card = event.target && event.target.closest ? event.target.closest('.team-role-item') : null;
             if (card) card.classList.add('dragging');
@@ -4747,7 +4748,7 @@ function toggleBrokerPanel() {
             const card = event.target && event.target.closest ? event.target.closest('.team-role-item') : null;
             if (card) card.classList.remove('dragging');
             setSummaryDropzoneHot(false);
-            setSummaryDropzoneVisible(false);
+            setSummaryDropzoneVisible(false, { acceptCardDrop: false });
             if (!dragDropTriggered) {
                 setSummaryStatusHint('未命中，请拖到电脑屏幕/桌面高亮区域', 'warn');
                 showSummaryBubble('未命中，请拖到电脑屏幕/桌面高亮区域');
@@ -6219,7 +6220,7 @@ function toggleBrokerPanel() {
                 };
                 draggingRoleId = gameObject.__teamRoleId;
                 dragDropTriggered = false;
-                setSummaryDropzoneVisible(true);
+                setSummaryDropzoneVisible(true, { acceptCardDrop: false });
                 setSummaryStatusHint('拖动像素人到电脑屏幕/桌面高亮区域即可触发总结', 'info');
                 gameObject.setDepth(3001);
                 const rec = guestSprites[gameObject.__teamAgentId];
@@ -6255,7 +6256,7 @@ function toggleBrokerPanel() {
                 }
                 isDraggingTeamSprite = false;
                 setSummaryDropzoneHot(false);
-                setSummaryDropzoneVisible(false);
+                setSummaryDropzoneVisible(false, { acceptCardDrop: false });
                 // 先回归角色位置，避免“卡在电脑前”的视觉卡顿。
                 renderGuestAgentsInScene();
                 if (hit) {
