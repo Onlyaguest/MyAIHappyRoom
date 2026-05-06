@@ -1,21 +1,26 @@
 # HappyRoom Acceptance Log
 
-## 2026-05-06 @ViviYang 关键反馈
+## 2026-05-06 Key User Feedback and Outcomes
 
-### 已明确问题
+| Feedback | Outcome |
+|---|---|
+| PM/Builder/Reviewer not visible as pixel people | Fixed in `261221c`, pending final broad acceptance. |
+| Drag to computer hard to hit / Notes not updated | Fixed across `509eeda`, `d71663f`, `03833db`; user later confirmed refresh issue and path became OK. |
+| Fireplace board too blocking / not useful | Hidden and suspended in `98dbc1b`. |
+| Cat four states unclear | Owner Status Cat semantics added in `fb4efe0`. |
+| Movement grid too sparse | Denser placement and dropped anchors across `fb4efe0`, `5334e81`, `29b3155`. |
+| One-click summary should be in Yesterday Notes | Implemented and stabilized. |
+| Per-role skin configuration needed | API/UI added; upload/apply/list/delete supported. |
+| User's real sprite sheets fail validation | Fixed in `e99d041` via auto-crop and tolerant near-magenta cleanup. |
+| Skin config panel hard to use continuously | Tabs + single-card UI added in `0154997`. |
+| Drag-to-computer should summarize only dragged role | Role-only daily summary added in `0154997`. |
+| Latest link not running | Runtime restarted with Python 3.11; health/smoke passed. |
 
-1. 三角色最初未作为像素人进入办公室可见（修复提交：`261221c`）。
-2. 拖拽到电脑热区有卡顿/未命中，无法稳定触发总结（修复提交：`509eeda`）。
-3. 看不到壁炉白板/看板入口（修复提交：`fb4efe0`）。
+## Current User Validation Link
 
-### 新需求（已拆任务）
+- `http://127.0.0.1:19000/?ts=202605061933`
 
-1. 猫猫四状态语义明确并接状态源（task #16）。
-2. 三角色移动网格点更细密（task #17）。
-3. Yesterday Notes 展示一键总结内容（task #18）。
-4. 每个角色独立换皮肤接口（task #19）。
+## Open Acceptance Items
 
-### 当前结论
-
-- 新需求开发已交付并提审（`fb4efe0`）。
-- 等待 QA 和最终人类验收结论。
+- User final validation of `0154997` UI and role-only summary behavior.
+- Decide whether to mark sprite-skin tasks #36-#43, #45-#46 done after user confirmation.

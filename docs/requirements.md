@@ -2,24 +2,31 @@
 
 更新时间：2026-05-06
 
-## 当前需求主线
+## Active / Recent Requirements
 
-1. 角色可视化：`PM / Builder / Reviewer` 作为像素人首屏可见，并可区分身份与状态。
-2. 拖拽总结：拖像素人到电脑附近需稳定触发“项目状态总结 + 催办建议”。
-3. 看板能力：壁炉上方常驻可见看板入口；支持链接展示 + PPT 上传 fallback。
-4. 体验增强：
-   - 猫猫四态具备明确产品语义（owner 状态映射）；
-   - 角色移动落点更细密；
-   - 一键总结同步到 Yesterday Notes；
-   - 支持每角色独立换皮肤。
+1. Role visualization: PM/Builder/Reviewer must appear as visible pixel people in the room.
+2. Drag summary: dragging a role to the computer should trigger a stable summary flow.
+3. Role-specific summary: dragging a role now returns only that role's own daily work summary.
+4. Yesterday Notes: one-click summaries should be recorded in Yesterday Notes, not buried in Team/Visitors notes.
+5. Role movement: dropped roles should stay near the drop location and not snap back to sparse points.
+6. Role skins:
+   - Upload PNG/JPG sprite sheets.
+   - Support 8 columns × 7 rows with square frames.
+   - Tolerate real generated images with slight dimension drift and near-magenta backgrounds.
+   - Support per-role apply and refresh persistence.
+   - Provide usable tabs/single-card configuration UI.
+7. Owner Status Cat: cat states have explicit owner-status meaning.
+8. Fireplace board: feature is currently suspended/hidden by user request.
+9. Project traceability: all requirements/tasks/acceptance/decisions should be recorded in `MyAIHappyRoom/docs/`.
 
-## 范围说明（MVP）
+## MVP Boundaries
 
-- PPT/PPTX 当前为文件卡片 + 打开/下载 fallback，不包含内嵌逐页播放。
-- 催办动作 v1 在总结中给出“催谁/催什么”建议；真实 Slock 催办消息由 PM 执行。
+- Uploaded skins are app-managed files under `uploads/role-skins/`, not committed to git.
+- Fireplace board / PPT presenter is suspended until reprioritized.
+- MATA gateway and private token-based flows are not copied directly.
 
-## 后续增强候选
+## Backlog Candidates
 
-- 看板内嵌 PPT 逐页预览与翻页控制。
-- Presenter 的语音讲解/脚本讲解接口。
-- Summary 与 Yesterday Notes 的筛选、历史浏览。
+- Pluggable chat / recent logs panel.
+- Asset list export and memo generation scripts.
+- Revisit fireplace board with UX-first redesign if Vivi reopens it.

@@ -2,23 +2,33 @@
 
 ## 2026-05-06
 
-### D-001 单仓追踪策略
+### D-001 Single repository tracking
 
-- 代码与项目进度文档统一维护在 `MyAIHappyRoom`。
-- `MySlockRoom` 暂停使用，仅保留为历史备份（`main/db6020b`）。
+- Code, progress, requirements, tasks, acceptance, and decisions live in `MyAIHappyRoom`.
+- `MySlockRoom` is paused and retained only as historical backup.
 
-### D-002 主频道可见性优先
+### D-002 Main-channel visibility
 
-- 对 @ViviYang 的阶段总结、验收结论统一发 `#Happyroom` 主频道。
-- 线程用于执行细节，避免关键结论丢失。
+- Conclusions, acceptance requests, and experience links for @ViviYang go in `#Happyroom` main channel.
+- Threads are acceptable for execution details.
 
-### D-003 壁炉看板 MVP 范围
+### D-003 Fireplace board suspended
 
-- 当前支持链接展示 + PPT/PPTX/PDF 上传后的文件卡片（打开/下载 fallback）。
-- 内嵌逐页播放不在当前 MVP，后续按需求单列增强任务。
+- The fireplace board/PPT/presenter MVP was built but the user found it too blocking.
+- It is hidden and suspended until reprioritized.
 
-### D-004 像素人总结路径验收口径
+### D-004 Real user assets over strict validation
 
-- 首屏可见三角色像素人且状态可感知。
-- 拖拽到电脑热区需稳定触发“项目总结 + 催办建议”。
-- 未命中时需提供清晰热区提示，不破坏页面状态。
+- Sprite upload must support good real generated images even if they differ slightly from exact machine constraints.
+- Near-8:7 sheets should be auto-cropped to 8×7 square frames when safe.
+- Edge-connected near-magenta backgrounds should be normalized/cleaned instead of hard-failing.
+
+### D-005 Role-specific drag summary
+
+- Dragging PM/Builder/Reviewer to the computer should return that role's own daily work summary only.
+- It should not mix full-project digest or other roles' work unless a separate project-summary action is introduced.
+
+### D-006 Release is part of the development loop
+
+- Before user validation, the runtime commit, health, port, cache/force-refresh note, and rollback point must be known.
+- Link-down/page-unchanged issues are Release-owned until environment is ruled out.
