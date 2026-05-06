@@ -234,6 +234,14 @@
             z-index: 34;
             overflow: hidden;
             pointer-events: auto;
+            transition: height 0.18s ease, box-shadow 0.18s ease;
+        }
+        #fireplace-board-stage.collapsed {
+            height: 34px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.42);
+        }
+        #fireplace-board-stage.collapsed #fireplace-board-body {
+            display: none;
         }
         #fireplace-board-entry-badge {
             display: inline-flex;
@@ -257,7 +265,8 @@
             height: 30px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-start;
+            gap: 8px;
             padding: 0 10px;
             background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
             border-bottom: 1px solid #334155;
@@ -265,19 +274,92 @@
             font-size: 11px;
             letter-spacing: 0.3px;
         }
+        #fireplace-board-header-main {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            flex: 0 0 auto;
+        }
         #fireplace-board-status {
             color: #93c5fd;
             font-size: 10px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 220px;
+            max-width: 180px;
+            flex: 1 1 auto;
+        }
+        #fireplace-board-header-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            flex: 0 0 auto;
+        }
+        .fireplace-board-action {
+            border: 1px solid #475569;
+            border-radius: 4px;
+            background: #0f172a;
+            color: #e2e8f0;
+            font-family: 'ArkPixel', monospace;
+            font-size: 10px;
+            line-height: 1;
+            padding: 4px 5px;
+            cursor: pointer;
+        }
+        .fireplace-board-action:hover {
+            border-color: #7dd3fc;
+            color: #e0f2fe;
         }
         #fireplace-board-body {
             position: relative;
             width: 100%;
             height: calc(100% - 30px);
             background: #0b1220;
+        }
+        #fireplace-board-help {
+            display: none;
+            position: absolute;
+            left: 8px;
+            right: 8px;
+            top: 8px;
+            border: 1px solid rgba(147, 197, 253, 0.5);
+            border-radius: 8px;
+            padding: 8px 10px;
+            background: rgba(8, 21, 40, 0.95);
+            color: #dbeafe;
+            font-size: 10px;
+            line-height: 1.5;
+            z-index: 2;
+        }
+        #fireplace-board-help.show {
+            display: block;
+        }
+        #fireplace-board-help .help-title {
+            color: #f8fafc;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
+        #fireplace-board-help ol {
+            margin: 0 0 6px 14px;
+            padding: 0;
+        }
+        #fireplace-board-help li {
+            margin: 0 0 2px 0;
+        }
+        #fireplace-board-help button {
+            border: 1px solid #60a5fa;
+            border-radius: 4px;
+            background: #0f172a;
+            color: #bfdbfe;
+            font-family: 'ArkPixel', monospace;
+            font-size: 10px;
+            padding: 4px 6px;
+            cursor: pointer;
+        }
+        #fireplace-board-help button:hover {
+            border-color: #93c5fd;
+            color: #dbeafe;
         }
         #fireplace-board-iframe {
             width: 100%;
@@ -1115,6 +1197,16 @@
             gap: 7px;
             min-height: 108px;
         }
+        #board-control-panel.guide-focus {
+            border-color: #7dd3fc;
+            box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.35);
+            animation: boardControlPulse 0.9s ease 1;
+        }
+        @keyframes boardControlPulse {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.01); }
+            100% { transform: scale(1); }
+        }
         #board-control-title {
             color: #facc15;
             font-size: 11px;
@@ -1442,6 +1534,17 @@
                 height: 25vh;
                 min-height: 150px;
             }
+            #fireplace-board-stage.collapsed {
+                height: 34px;
+                min-height: 34px;
+            }
+            #fireplace-board-status {
+                max-width: 30vw;
+            }
+            #fireplace-board-header-actions .fireplace-board-action {
+                font-size: 9px;
+                padding: 4px;
+            }
 
             #bottom-panels {
                 width: 100vw;
@@ -1611,11 +1714,26 @@
             <div id="game-skeleton"><div class="hint">正在进入像素办公室…</div></div>
             <div id="fireplace-board-stage">
                 <div id="fireplace-board-header">
-                    <span id="fireplace-board-title">壁炉展示看板</span>
-                    <span id="fireplace-board-entry-badge">入口</span>
+                    <div id="fireplace-board-header-main">
+                        <span id="fireplace-board-title">壁炉展示看板</span>
+                        <span id="fireplace-board-entry-badge">入口</span>
+                    </div>
                     <span id="fireplace-board-status">未加载内容</span>
+                    <div id="fireplace-board-header-actions">
+                        <button id="fireplace-board-help-btn" class="fireplace-board-action" type="button" onclick="toggleBoardHelp()">用法</button>
+                        <button id="fireplace-board-toggle-btn" class="fireplace-board-action" type="button" onclick="toggleBoardCollapsed()">收起</button>
+                    </div>
                 </div>
                 <div id="fireplace-board-body">
+                    <div id="fireplace-board-help">
+                        <div class="help-title">怎么使用壁炉看板</div>
+                        <ol>
+                            <li>在右下「壁炉看板控制」输入链接后点「加载链接」。</li>
+                            <li>或点击「上传 PPT/PDF」共享文件（可新窗口打开/下载）。</li>
+                            <li>可选：选择 PM/Builder/Reviewer 到演讲位。</li>
+                        </ol>
+                        <button type="button" onclick="focusBoardControlPanel()">定位到控制区</button>
+                    </div>
                     <iframe id="fireplace-board-iframe" title="Fireplace Presentation Board"></iframe>
                     <div id="fireplace-board-filecard">
                         <div class="file-name" id="fireplace-board-filename">暂无文件</div>
@@ -1627,7 +1745,7 @@
                     </div>
                     <div id="fireplace-board-fallback">
                         <div>这里是壁炉上方展示看板</div>
-                        <div>可加载网页链接或上传 PPT/PDF 共享观看</div>
+                        <div>点击右上角“用法”查看步骤，也可直接在右下控制区加载链接/上传文件</div>
                         <a id="fireplace-board-open-link" href="#" target="_blank" rel="noopener noreferrer" style="display:none;">新窗口打开当前链接</a>
                     </div>
                 </div>
@@ -2343,6 +2461,9 @@
             updated_at: ''
         };
         let lastPresentationFetch = 0;
+        const BOARD_UI_STORAGE_KEY = 'fireplaceBoardUiV1';
+        const boardUiState = { collapsed: false, helpOpen: false };
+        let boardControlGuideTimer = null;
 
         // 状态控制栏函数（用于测试）
         function setState(state, detail) {
@@ -4856,6 +4977,93 @@ function toggleBrokerPanel() {
             return parsed.toString();
         }
 
+        function saveBoardUiState() {
+            try {
+                localStorage.setItem(BOARD_UI_STORAGE_KEY, JSON.stringify({
+                    collapsed: !!boardUiState.collapsed,
+                    helpOpen: !!boardUiState.helpOpen
+                }));
+            } catch (e) {}
+        }
+
+        function loadBoardUiState() {
+            try {
+                const raw = localStorage.getItem(BOARD_UI_STORAGE_KEY);
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object') {
+                    boardUiState.collapsed = !!parsed.collapsed;
+                    boardUiState.helpOpen = !!parsed.helpOpen;
+                }
+            } catch (e) {}
+        }
+
+        function setBoardCollapsed(next, options = {}) {
+            const opts = (options && typeof options === 'object') ? options : {};
+            const save = opts.save !== false;
+            const collapsed = !!next;
+            const stage = document.getElementById('fireplace-board-stage');
+            const btn = document.getElementById('fireplace-board-toggle-btn');
+            if (!stage || !btn) return;
+            boardUiState.collapsed = collapsed;
+            stage.classList.toggle('collapsed', collapsed);
+            btn.textContent = collapsed ? '展开' : '收起';
+            btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            btn.title = collapsed ? '展开壁炉看板' : '收起壁炉看板';
+            if (collapsed && boardUiState.helpOpen) {
+                setBoardHelpOpen(false, { save: false });
+            }
+            if (save) saveBoardUiState();
+        }
+
+        function toggleBoardCollapsed(force) {
+            const next = (typeof force === 'boolean') ? force : !boardUiState.collapsed;
+            setBoardCollapsed(next);
+        }
+
+        function setBoardHelpOpen(next, options = {}) {
+            const opts = (options && typeof options === 'object') ? options : {};
+            const save = opts.save !== false;
+            const open = !!next;
+            const panel = document.getElementById('fireplace-board-help');
+            const btn = document.getElementById('fireplace-board-help-btn');
+            if (!panel || !btn) return;
+            if (open && boardUiState.collapsed) {
+                setBoardCollapsed(false, { save: false });
+            }
+            boardUiState.helpOpen = open;
+            panel.classList.toggle('show', open);
+            btn.textContent = open ? '隐藏说明' : '用法';
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (save) saveBoardUiState();
+        }
+
+        function toggleBoardHelp(force) {
+            const next = (typeof force === 'boolean') ? force : !boardUiState.helpOpen;
+            setBoardHelpOpen(next);
+        }
+
+        function focusBoardControlPanel() {
+            const panel = document.getElementById('board-control-panel');
+            if (!panel) return;
+            panel.classList.add('guide-focus');
+            try {
+                panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } catch (e) {
+                panel.scrollIntoView();
+            }
+            if (boardControlGuideTimer) clearTimeout(boardControlGuideTimer);
+            boardControlGuideTimer = setTimeout(() => {
+                panel.classList.remove('guide-focus');
+            }, 1400);
+        }
+
+        function initBoardUi() {
+            loadBoardUiState();
+            setBoardCollapsed(boardUiState.collapsed, { save: false });
+            setBoardHelpOpen(boardUiState.helpOpen, { save: false });
+        }
+
         function setBoardUploadHint(text, type) {
             const el = document.getElementById('board-upload-status');
             if (!el) return;
@@ -5153,6 +5361,9 @@ function toggleBrokerPanel() {
         window.changeBoardPage = changeBoardPage;
         window.assignBoardPresenter = assignBoardPresenter;
         window.clearBoardPresenter = clearBoardPresenter;
+        window.toggleBoardCollapsed = toggleBoardCollapsed;
+        window.toggleBoardHelp = toggleBoardHelp;
+        window.focusBoardControlPanel = focusBoardControlPanel;
 
         function getAreaRect(area) {
             // 区域坐标（海辛提供，左上-右下；这里的 x/y 作为 sprite 底部锚点坐标来用）
@@ -6273,6 +6484,7 @@ function toggleBrokerPanel() {
             // 加载昨日 memo
             loadMemo();
             bindSummaryDropzone();
+            initBoardUi();
             fetchTeamRoles();
             fetchPresentationBoard();
             fetchRoleSkins();
