@@ -1595,11 +1595,14 @@ def one_click_summary():
             lines.append(f"- {r.get('name') or r.get('roleId')}: {role_label}｜{st}｜{note}")
 
         summary = "\n".join(lines)
+        persist = bool(data.get("persist", True))
         trigger_role_id = str(data.get("triggerRoleId") or "").strip().lower()
-        append_one_click_summary(summary, trigger_role_id=trigger_role_id, roles=roles, mode="rule-based-v1")
+        if persist:
+            append_one_click_summary(summary, trigger_role_id=trigger_role_id, roles=roles, mode="rule-based-v1")
         return jsonify({
             "ok": True,
             "mode": "rule-based-v1",
+            "persisted": persist,
             "generated_at": datetime.now().isoformat(),
             "summary": summary,
             "roles": roles,

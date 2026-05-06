@@ -149,10 +149,10 @@
         }
         #summary-dropzone {
             position: absolute;
-            left: 110px;
-            top: 230px;
-            width: 250px;
-            height: 220px;
+            left: 24px;
+            top: 96px;
+            width: 500px;
+            height: 390px;
             border: 2px dashed rgba(125, 211, 252, 0.85);
             border-radius: 12px;
             background: rgba(14, 28, 52, 0.28);
@@ -174,11 +174,25 @@
             opacity: 1;
             transform: scale(1);
             pointer-events: auto;
+            box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.35), 0 0 24px rgba(56, 189, 248, 0.35) inset;
         }
         #summary-dropzone.hot {
             border-color: #86efac;
             background: rgba(22, 101, 52, 0.35);
             color: #dcfce7;
+        }
+        .memo-summary-local {
+            border: 1px solid rgba(250, 204, 21, 0.55);
+            border-radius: 8px;
+            padding: 6px 8px;
+            background: rgba(250, 204, 21, 0.08);
+        }
+        .memo-summary-local.flash {
+            animation: memoFlash 1.1s ease;
+        }
+        @keyframes memoFlash {
+            0% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.55); }
+            100% { box-shadow: 0 0 0 14px rgba(250, 204, 21, 0); }
         }
         #summary-bubble {
             position: absolute;
@@ -1407,10 +1421,10 @@
                 margin-left: 0 !important;
             }
             #summary-dropzone {
-                left: 8vw;
-                top: 28vh;
-                width: 42vw;
-                height: 22vh;
+                left: 4vw;
+                top: 20vh;
+                width: 74vw;
+                height: 44vh;
                 font-size: 11px;
             }
             #summary-bubble {
@@ -2276,11 +2290,11 @@
             'guest_anim_1', 'guest_anim_2', 'guest_anim_3', 'guest_anim_4', 'guest_anim_5', 'guest_anim_6',
             'guest_role_1', 'guest_role_2', 'guest_role_3', 'guest_role_4', 'guest_role_5', 'guest_role_6'
         ];
-        const SCENE_SUMMARY_DROP_ZONE = { x1: 40, y1: 120, x2: 520, y2: 610 };
+        const SCENE_SUMMARY_DROP_ZONE = { x1: 10, y1: 70, x2: 650, y2: 700 };
         const SCENE_COMPUTER_CENTER = { x: 220, y: 420 };
-        const SCENE_COMPUTER_HIT_RADIUS = { x: 250, y: 220 };
-        const SCENE_COMPUTER_DROP_MARGIN_HOT = 22;
-        const SCENE_COMPUTER_DROP_MARGIN_HIT = 88;
+        const SCENE_COMPUTER_HIT_RADIUS = { x: 360, y: 300 };
+        const SCENE_COMPUTER_DROP_MARGIN_HOT = 36;
+        const SCENE_COMPUTER_DROP_MARGIN_HIT = 140;
         const AREA_GRID_STEP_X = 22;
         const AREA_GRID_STEP_Y = 18;
         const TEAM_ROLE_DEFAULTS = [
@@ -4292,12 +4306,22 @@ function toggleBrokerPanel() {
             return `${agent.name} [${teamRoleTag(agent.roleId)} · ${st}${presenterSuffix}]`;
         }
 
+        function getComputerDropZoneRect(margin = 0) {
+            return {
+                x1: SCENE_SUMMARY_DROP_ZONE.x1 - margin,
+                y1: SCENE_SUMMARY_DROP_ZONE.y1 - margin,
+                x2: SCENE_SUMMARY_DROP_ZONE.x2 + margin,
+                y2: SCENE_SUMMARY_DROP_ZONE.y2 + margin
+            };
+        }
+
         function isInComputerDropZone(x, y, margin = 0) {
+            const zone = getComputerDropZoneRect(margin);
             const inRect = (
-                x >= (SCENE_SUMMARY_DROP_ZONE.x1 - margin) &&
-                x <= (SCENE_SUMMARY_DROP_ZONE.x2 + margin) &&
-                y >= (SCENE_SUMMARY_DROP_ZONE.y1 - margin) &&
-                y <= (SCENE_SUMMARY_DROP_ZONE.y2 + margin)
+                x >= zone.x1 &&
+                x <= zone.x2 &&
+                y >= zone.y1 &&
+                y <= zone.y2
             );
             const rx = SCENE_COMPUTER_HIT_RADIUS.x + margin;
             const ry = SCENE_COMPUTER_HIT_RADIUS.y + margin;
@@ -4305,6 +4329,54 @@ function toggleBrokerPanel() {
             const ny = (y - SCENE_COMPUTER_CENTER.y) / ry;
             const inEllipse = (nx * nx + ny * ny) <= 1.0;
             return inRect || inEllipse;
+        }
+
+        function getBoundsSafe(gameObject) {
+            if (!gameObject || typeof gameObject.getBounds !== 'function') return null;
+            try {
+                const b = gameObject.getBounds();
+                if (!b) return null;
+                return {
+                    x1: b.x,
+                    y1: b.y,
+                    x2: b.x + b.width,
+                    y2: b.y + b.height,
+                    width: b.width,
+                    height: b.height
+                };
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function getRectOverlapArea(a, b) {
+            if (!a || !b) return 0;
+            const x1 = Math.max(a.x1, b.x1);
+            const y1 = Math.max(a.y1, b.y1);
+            const x2 = Math.min(a.x2, b.x2);
+            const y2 = Math.min(a.y2, b.y2);
+            if (x2 <= x1 || y2 <= y1) return 0;
+            return (x2 - x1) * (y2 - y1);
+        }
+
+        function isSpriteOverComputerDropZone(gameObject, margin = 0) {
+            const bounds = getBoundsSafe(gameObject);
+            if (!bounds) return false;
+            const zone = getComputerDropZoneRect(margin);
+            const overlap = getRectOverlapArea(bounds, zone);
+            const spriteArea = Math.max(1, bounds.width * bounds.height);
+            // 显著重叠即命中，避免用户找像素点。
+            return overlap >= Math.max(260, spriteArea * 0.1);
+        }
+
+        function isComputerDropHot(pointerX, pointerY, gameObject) {
+            return isInComputerDropZone(pointerX, pointerY, SCENE_COMPUTER_DROP_MARGIN_HOT)
+                || isSpriteOverComputerDropZone(gameObject, SCENE_COMPUTER_DROP_MARGIN_HOT);
+        }
+
+        function isComputerDropHit(pointerX, pointerY, gameObject) {
+            return isInComputerDropZone(pointerX, pointerY, SCENE_COMPUTER_DROP_MARGIN_HIT)
+                || isSpriteOverComputerDropZone(gameObject, SCENE_COMPUTER_DROP_MARGIN_HIT);
         }
 
         function prependSummaryToMemo(summaryText, triggerName) {
@@ -4326,6 +4398,17 @@ function toggleBrokerPanel() {
             ].join('');
             const old = memoContent.innerHTML || '';
             memoContent.innerHTML = html + old.replace('<div id="memo-placeholder">暂无昨日日记</div>', '');
+        }
+
+        function flashLatestSummaryInMemo() {
+            const memoContent = document.getElementById('memo-content');
+            if (!memoContent) return;
+            const first = memoContent.querySelector('.memo-summary-local');
+            if (!first) return;
+            first.classList.remove('flash');
+            void first.offsetWidth; // restart animation
+            first.classList.add('flash');
+            first.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
         function getNudgeOwners(triggerRoleId) {
@@ -4572,7 +4655,7 @@ function toggleBrokerPanel() {
                 const res = await fetch('/one-click-summary', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ roles, triggerRoleId })
+                    body: JSON.stringify({ roles, triggerRoleId, persist: false })
                 });
                 const data = await res.json();
                 if (!res.ok || !data.ok || !data.summary) {
@@ -4591,34 +4674,32 @@ function toggleBrokerPanel() {
                 ? `\n\n推进动作：已催办 ${nudgedOwners.join('、')} 同步当前进展。`
                 : `\n\n推进动作：当前无额外催办对象。`;
             const digestLine = `\n\n触发人：${digest.triggerName}（已在电脑前发起项目盘点）`;
-            setSummaryContent(summaryText + digestLine + nudgeLine);
+            const finalSummaryText = summaryText + digestLine + nudgeLine;
+            setSummaryContent(finalSummaryText);
             const triggerName = triggerRole ? triggerRole.name : digest.triggerName;
             const nowText = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             const nudgeHint = nudgedOwners.length > 0 ? `，并催办 ${nudgedOwners.join('、')}` : '';
             setSummaryStatusHint(`${triggerName} 于 ${nowText} 触发${nudgeHint}`, 'ok');
             showSummaryBubble(`总结已生成：由 ${triggerName} 触发${nudgeHint}`);
 
-            if (usedFallback) {
-                try {
-                    await fetch('/one-click-summary/record', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            summary: summaryText,
-                            triggerRoleId,
-                            roles,
-                            mode: 'frontend-fallback-v1'
-                        })
-                    });
-                } catch (e) {
-                    console.warn('record fallback summary failed:', e);
-                }
-            }
-            // #18: show latest one-click summaries in Yesterday Notes panel.
-            prependSummaryToMemo(summaryText, triggerName);
-            const synced = await loadMemo();
-            if (!synced) {
-                prependSummaryToMemo(summaryText, triggerName);
+            // 强一致：同一个函数同时写 Summary + Yesterday Notes 本地 DOM。
+            prependSummaryToMemo(finalSummaryText, triggerName);
+            flashLatestSummaryInMemo();
+
+            // 同步留档到服务端；失败不回滚本地 Notes。
+            try {
+                await fetch('/one-click-summary/record', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        summary: finalSummaryText,
+                        triggerRoleId,
+                        roles,
+                        mode: usedFallback ? 'frontend-fallback-v2' : 'ui-sync-v2'
+                    })
+                });
+            } catch (e) {
+                console.warn('record summary failed, keep local memo note:', e);
             }
         }
 
@@ -6158,8 +6239,7 @@ function toggleBrokerPanel() {
                     rec.nameText.x = dragX;
                     rec.nameText.y = dragY - 120;
                 }
-                const hot = isInComputerDropZone(dragX, dragY, SCENE_COMPUTER_DROP_MARGIN_HOT)
-                    || isInComputerDropZone(lastPointerWorld.x, lastPointerWorld.y, SCENE_COMPUTER_DROP_MARGIN_HOT);
+                const hot = isComputerDropHot(lastPointerWorld.x, lastPointerWorld.y, gameObject);
                 setSummaryDropzoneHot(hot);
             });
 
@@ -6169,8 +6249,7 @@ function toggleBrokerPanel() {
                 const agentId = gameObject.__teamAgentId;
                 const px = Number.isFinite(pointer.worldX) ? pointer.worldX : lastPointerWorld.x;
                 const py = Number.isFinite(pointer.worldY) ? pointer.worldY : lastPointerWorld.y;
-                const hit = isInComputerDropZone(gameObject.x, gameObject.y, SCENE_COMPUTER_DROP_MARGIN_HIT)
-                    || isInComputerDropZone(px, py, SCENE_COMPUTER_DROP_MARGIN_HIT);
+                const hit = isComputerDropHit(px, py, gameObject);
                 if (agentId) {
                     teamRolePinnedPositions[agentId] = { x: gameObject.x, y: gameObject.y, updatedAt: Date.now() };
                 }
