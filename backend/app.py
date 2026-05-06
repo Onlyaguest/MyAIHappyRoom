@@ -1988,27 +1988,79 @@ def one_click_summary():
             "syncing": "同步中",
             "error": "异常中",
         }
-        active_count = sum(1 for r in roles if r.get("state") not in {"idle"})
-        error_count = sum(1 for r in roles if r.get("state") == "error")
-        headline = f"当前共 {len(roles)} 个角色在线，活跃 {active_count} 个"
-        if error_count > 0:
-            headline += f"，其中 {error_count} 个处于异常状态"
-
-        lines = [headline]
-        for r in roles:
-            st = state_cn.get(r.get("state"), r.get("state") or "待命")
-            role_label = (r.get("role") or "").strip()
-            note = (r.get("note") or "无补充说明").strip()
-            lines.append(f"- {r.get('name') or r.get('roleId')}: {role_label}｜{st}｜{note}")
-
-        summary = "\n".join(lines)
-        persist = bool(data.get("persist", True))
         trigger_role_id = str(data.get("triggerRoleId") or "").strip().lower()
+        role_map = {str(r.get("roleId") or "").strip().lower(): r for r in roles if isinstance(r, dict)}
+        mode = "rule-based-v1"
+
+        if trigger_role_id in {"pm", "builder", "reviewer"}:
+            mode = "role-daily-v1"
+            role = role_map.get(trigger_role_id) or {}
+            role_name = str(role.get("name") or trigger_role_id.upper()).strip() or trigger_role_id.upper()
+            role_state = normalize_agent_state(role.get("state"))
+            role_state_text = state_cn.get(role_state, "待命")
+            role_note = sanitize_content(str(role.get("note") or "").strip())
+            title = f"【{role_name} 今日工作总结】"
+            lines = [title]
+
+            payload = load_one_click_summaries()
+            all_items = payload.get("items") if isinstance(payload.get("items"), list) else []
+            today = datetime.now().date()
+            today_role_items = []
+            for row in all_items:
+                if not isinstance(row, dict):
+                    continue
+                row_role = str(row.get("triggerRoleId") or "").strip().lower()
+                row_mode = str(row.get("mode") or "").strip().lower()
+                if row_role != trigger_role_id:
+                    continue
+                if not row_mode.startswith("role-daily"):
+                    continue
+                ts = str(row.get("generated_at") or "").strip()
+                try:
+                    row_dt = datetime.fromisoformat(ts)
+                except Exception:
+                    continue
+                if row_dt.date() == today:
+                    today_role_items.append(row)
+
+            lines.append(f"当前状态：{role_state_text}")
+            if role_note:
+                lines.append(f"今日进展：{role_note}")
+            else:
+                lines.append("今天暂未记录该角色工作内容")
+
+            if role_state == "error":
+                lines.append("风险：当前处于异常状态，需优先处理阻塞。")
+            elif role_state == "idle":
+                lines.append("待办：请补充今日工作内容并更新状态。")
+            else:
+                lines.append("待办：继续推进，完成后可再次拖拽更新本角色总结。")
+
+            if today_role_items:
+                lines.append(f"今日累计记录：{len(today_role_items)} 条。")
+
+            summary = "\n".join(lines)
+        else:
+            active_count = sum(1 for r in roles if r.get("state") not in {"idle"})
+            error_count = sum(1 for r in roles if r.get("state") == "error")
+            headline = f"当前共 {len(roles)} 个角色在线，活跃 {active_count} 个"
+            if error_count > 0:
+                headline += f"，其中 {error_count} 个处于异常状态"
+
+            lines = [headline]
+            for r in roles:
+                st = state_cn.get(r.get("state"), r.get("state") or "待命")
+                role_label = (r.get("role") or "").strip()
+                note = (r.get("note") or "无补充说明").strip()
+                lines.append(f"- {r.get('name') or r.get('roleId')}: {role_label}｜{st}｜{note}")
+            summary = "\n".join(lines)
+
+        persist = bool(data.get("persist", True))
         if persist:
-            append_one_click_summary(summary, trigger_role_id=trigger_role_id, roles=roles, mode="rule-based-v1")
+            append_one_click_summary(summary, trigger_role_id=trigger_role_id, roles=roles, mode=mode)
         return jsonify({
             "ok": True,
-            "mode": "rule-based-v1",
+            "mode": mode,
             "persisted": persist,
             "generated_at": datetime.now().isoformat(),
             "summary": summary,

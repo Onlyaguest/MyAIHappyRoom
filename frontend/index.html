@@ -1263,10 +1263,64 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
+            max-height: min(52vh, 420px);
+            overflow: hidden;
         }
         #role-skin-title {
             color: #facc15;
             font-size: 11px;
+        }
+        #role-skin-tabs {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 4px;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: linear-gradient(180deg, rgba(11, 18, 32, 0.98) 0%, rgba(11, 18, 32, 0.92) 100%);
+            padding-bottom: 2px;
+        }
+        .role-skin-tab {
+            border: 1px solid #475569;
+            border-radius: 4px;
+            background: #1e293b;
+            color: #cbd5e1;
+            padding: 4px 6px;
+            font-family: 'ArkPixel', monospace;
+            font-size: 10px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .role-skin-tab.active {
+            border-color: #facc15;
+            color: #fef08a;
+            background: #172554;
+        }
+        #role-skin-cards {
+            overflow-y: auto;
+            padding-right: 2px;
+            min-height: 120px;
+            max-height: min(36vh, 260px);
+        }
+        #role-skin-cards::-webkit-scrollbar { width: 5px; }
+        #role-skin-cards::-webkit-scrollbar-track { background: rgba(30,41,59,0.5); border-radius: 4px; }
+        #role-skin-cards::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .role-skin-card {
+            display: none;
+            flex-direction: column;
+            gap: 6px;
+            border: 1px solid #1f2937;
+            border-radius: 6px;
+            padding: 6px;
+            background: rgba(15, 23, 42, 0.88);
+        }
+        .role-skin-card.active {
+            display: flex;
+        }
+        .role-skin-role-title {
+            color: #cbd5e1;
+            font-size: 10px;
+            letter-spacing: 0.2px;
         }
         .role-skin-row {
             display: flex;
@@ -1306,6 +1360,9 @@
             border-color: #60a5fa;
             background: #0f172a;
         }
+        .role-skin-row .role-skin-apply-btn {
+            flex-shrink: 0;
+        }
         .role-skin-upload {
             display: flex;
             align-items: center;
@@ -1318,11 +1375,16 @@
             color: #94a3b8;
             font-size: 10px;
         }
+        .role-skin-upload button {
+            flex-shrink: 0;
+        }
         .role-skin-validate {
             color: #93c5fd;
             font-size: 10px;
             line-height: 1.35;
             word-break: break-word;
+            max-height: 54px;
+            overflow-y: auto;
         }
         .role-skin-preview {
             width: 72px;
@@ -1334,10 +1396,37 @@
             image-rendering: pixelated;
             display: none;
         }
+        .role-skin-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .role-skin-next-btn {
+            border: 1px solid #475569;
+            border-radius: 4px;
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 4px 6px;
+            font-family: 'ArkPixel', monospace;
+            font-size: 10px;
+            cursor: pointer;
+        }
+        .role-skin-next-btn:hover {
+            border-color: #60a5fa;
+            background: #0f172a;
+        }
+        #role-skin-step-hint {
+            color: #64748b;
+            font-size: 10px;
+        }
         #role-skin-hint {
             color: #94a3b8;
             font-size: 10px;
             line-height: 1.4;
+            max-height: 46px;
+            overflow-y: auto;
         }
         .guest-agent-item {
             display: flex;
@@ -1825,39 +1914,59 @@
             </div>
             <div id="role-skin-panel">
                 <div id="role-skin-title">角色皮肤配置</div>
-                <div class="role-skin-row">
-                    <label>PM</label>
-                    <select id="role-skin-pm"></select>
-                    <button onclick="saveRoleSkin('pm')">应用选中</button>
+                <div id="role-skin-tabs">
+                    <button id="role-skin-tab-pm" class="role-skin-tab active" onclick="setActiveRoleSkinTab('pm')">PM</button>
+                    <button id="role-skin-tab-builder" class="role-skin-tab" onclick="setActiveRoleSkinTab('builder')">Builder</button>
+                    <button id="role-skin-tab-reviewer" class="role-skin-tab" onclick="setActiveRoleSkinTab('reviewer')">Reviewer</button>
                 </div>
-                <div class="role-skin-upload">
-                    <input id="role-skin-file-pm" type="file" accept=".png,.jpg,.jpeg" />
-                    <button onclick="uploadRoleSkinForRole('pm')">上传并应用</button>
-                    <img id="role-skin-preview-pm" class="role-skin-preview" alt="PM skin preview" />
+                <div id="role-skin-cards">
+                    <div id="role-skin-card-pm" class="role-skin-card active">
+                        <div class="role-skin-role-title">PM 皮肤</div>
+                        <div class="role-skin-row">
+                            <label>已选</label>
+                            <select id="role-skin-pm"></select>
+                            <button class="role-skin-apply-btn" onclick="saveRoleSkin('pm')">应用选中</button>
+                        </div>
+                        <div class="role-skin-upload">
+                            <input id="role-skin-file-pm" type="file" accept=".png,.jpg,.jpeg" />
+                            <button onclick="uploadRoleSkinForRole('pm')">上传并应用</button>
+                            <img id="role-skin-preview-pm" class="role-skin-preview" alt="PM skin preview" />
+                        </div>
+                        <div id="role-skin-validate-pm" class="role-skin-validate"></div>
+                    </div>
+                    <div id="role-skin-card-builder" class="role-skin-card">
+                        <div class="role-skin-role-title">Builder 皮肤</div>
+                        <div class="role-skin-row">
+                            <label>已选</label>
+                            <select id="role-skin-builder"></select>
+                            <button class="role-skin-apply-btn" onclick="saveRoleSkin('builder')">应用选中</button>
+                        </div>
+                        <div class="role-skin-upload">
+                            <input id="role-skin-file-builder" type="file" accept=".png,.jpg,.jpeg" />
+                            <button onclick="uploadRoleSkinForRole('builder')">上传并应用</button>
+                            <img id="role-skin-preview-builder" class="role-skin-preview" alt="Builder skin preview" />
+                        </div>
+                        <div id="role-skin-validate-builder" class="role-skin-validate"></div>
+                    </div>
+                    <div id="role-skin-card-reviewer" class="role-skin-card">
+                        <div class="role-skin-role-title">Reviewer 皮肤</div>
+                        <div class="role-skin-row">
+                            <label>已选</label>
+                            <select id="role-skin-reviewer"></select>
+                            <button class="role-skin-apply-btn" onclick="saveRoleSkin('reviewer')">应用选中</button>
+                        </div>
+                        <div class="role-skin-upload">
+                            <input id="role-skin-file-reviewer" type="file" accept=".png,.jpg,.jpeg" />
+                            <button onclick="uploadRoleSkinForRole('reviewer')">上传并应用</button>
+                            <img id="role-skin-preview-reviewer" class="role-skin-preview" alt="Reviewer skin preview" />
+                        </div>
+                        <div id="role-skin-validate-reviewer" class="role-skin-validate"></div>
+                    </div>
                 </div>
-                <div id="role-skin-validate-pm" class="role-skin-validate"></div>
-                <div class="role-skin-row">
-                    <label>Builder</label>
-                    <select id="role-skin-builder"></select>
-                    <button onclick="saveRoleSkin('builder')">应用选中</button>
+                <div class="role-skin-footer">
+                    <button class="role-skin-next-btn" onclick="focusNextRoleSkinTab()">切到下一个角色</button>
+                    <span id="role-skin-step-hint">推荐顺序：PM → Builder → Reviewer</span>
                 </div>
-                <div class="role-skin-upload">
-                    <input id="role-skin-file-builder" type="file" accept=".png,.jpg,.jpeg" />
-                    <button onclick="uploadRoleSkinForRole('builder')">上传并应用</button>
-                    <img id="role-skin-preview-builder" class="role-skin-preview" alt="Builder skin preview" />
-                </div>
-                <div id="role-skin-validate-builder" class="role-skin-validate"></div>
-                <div class="role-skin-row">
-                    <label>Reviewer</label>
-                    <select id="role-skin-reviewer"></select>
-                    <button onclick="saveRoleSkin('reviewer')">应用选中</button>
-                </div>
-                <div class="role-skin-upload">
-                    <input id="role-skin-file-reviewer" type="file" accept=".png,.jpg,.jpeg" />
-                    <button onclick="uploadRoleSkinForRole('reviewer')">上传并应用</button>
-                    <img id="role-skin-preview-reviewer" class="role-skin-preview" alt="Reviewer skin preview" />
-                </div>
-                <div id="role-skin-validate-reviewer" class="role-skin-validate"></div>
                 <div id="role-skin-hint">支持 8×7 精灵图（PNG/JPG，背景 #ff00ff）。上传后可立即应用到对应角色。</div>
             </div>
             <div id="board-control-panel">
@@ -2460,6 +2569,8 @@
             'guest_anim_1', 'guest_anim_2', 'guest_anim_3', 'guest_anim_4', 'guest_anim_5', 'guest_anim_6',
             'guest_role_1', 'guest_role_2', 'guest_role_3', 'guest_role_4', 'guest_role_5', 'guest_role_6'
         ];
+        const ROLE_SKIN_ROLE_ORDER = ['pm', 'builder', 'reviewer'];
+        let activeRoleSkinTab = 'pm';
         const ROLE_SPRITE_STATE_TO_ROW = {
             idle: 0,
             writing: 4,
@@ -4355,6 +4466,39 @@ function toggleBrokerPanel() {
             }
         }
 
+        function setActiveRoleSkinTab(roleId) {
+            const rid = String(roleId || '').trim().toLowerCase();
+            if (!ROLE_SKIN_ROLE_ORDER.includes(rid)) return;
+            activeRoleSkinTab = rid;
+            ROLE_SKIN_ROLE_ORDER.forEach((id) => {
+                const tab = document.getElementById(`role-skin-tab-${id}`);
+                const card = document.getElementById(`role-skin-card-${id}`);
+                if (tab) tab.classList.toggle('active', id === rid);
+                if (card) card.classList.toggle('active', id === rid);
+            });
+            const stepHint = document.getElementById('role-skin-step-hint');
+            if (stepHint) {
+                const idx = ROLE_SKIN_ROLE_ORDER.indexOf(rid);
+                const next = ROLE_SKIN_ROLE_ORDER[(idx + 1) % ROLE_SKIN_ROLE_ORDER.length];
+                stepHint.textContent = `当前：${rid.toUpperCase()}，下一步：${next.toUpperCase()}`;
+            }
+            const cards = document.getElementById('role-skin-cards');
+            if (cards) cards.scrollTop = 0;
+        }
+
+        function focusNextRoleSkinTab(currentRoleId = '') {
+            const rid = ROLE_SKIN_ROLE_ORDER.includes(String(currentRoleId || '').trim().toLowerCase())
+                ? String(currentRoleId || '').trim().toLowerCase()
+                : activeRoleSkinTab;
+            const idx = ROLE_SKIN_ROLE_ORDER.indexOf(rid);
+            const next = ROLE_SKIN_ROLE_ORDER[(Math.max(0, idx) + 1) % ROLE_SKIN_ROLE_ORDER.length];
+            setActiveRoleSkinTab(next);
+            const nextSelect = document.getElementById(`role-skin-${next}`);
+            if (nextSelect && typeof nextSelect.focus === 'function') {
+                try { nextSelect.focus({ preventScroll: true }); } catch (e) { nextSelect.focus(); }
+            }
+        }
+
         function renderRoleSkinPanel() {
             const rows = normalizeRoleSkins(roleSkins);
             const byId = {};
@@ -4369,6 +4513,7 @@ function toggleBrokerPanel() {
                 else sel.value = ROLE_SKIN_DEFAULTS[rid];
                 updateRoleSkinPreview(rid, byId[rid] || null);
             });
+            setActiveRoleSkinTab(activeRoleSkinTab || 'pm');
         }
 
         function teamRoleStateToSpriteRow(state) {
@@ -4531,9 +4676,11 @@ function toggleBrokerPanel() {
                 ensureAllUploadedRoleSkinsLoaded();
                 resetTeamRoleSprites();
                 if (hint) {
-                    hint.textContent = `${rid.toUpperCase()} 已绑定 ${skinKey}`;
+                    const next = ROLE_SKIN_ROLE_ORDER[(ROLE_SKIN_ROLE_ORDER.indexOf(rid) + 1) % ROLE_SKIN_ROLE_ORDER.length];
+                    hint.textContent = `${rid.toUpperCase()} 已绑定 ${skinKey}，可继续配置 ${next.toUpperCase()}`;
                     hint.style.color = '#86efac';
                 }
+                focusNextRoleSkinTab(rid);
                 if (game) renderGuestAgentsInScene();
             } catch (e) {
                 if (hint) {
@@ -4595,9 +4742,11 @@ function toggleBrokerPanel() {
                     msg.style.color = warns.length ? '#facc15' : '#86efac';
                 }
                 if (hint) {
-                    hint.textContent = `${rid.toUpperCase()} 已应用上传皮肤 ${data.skin.skinId}`;
+                    const next = ROLE_SKIN_ROLE_ORDER[(ROLE_SKIN_ROLE_ORDER.indexOf(rid) + 1) % ROLE_SKIN_ROLE_ORDER.length];
+                    hint.textContent = `${rid.toUpperCase()} 已应用上传皮肤 ${data.skin.skinId}，可继续配置 ${next.toUpperCase()}`;
                     hint.style.color = '#86efac';
                 }
+                focusNextRoleSkinTab(rid);
                 if (game) renderGuestAgentsInScene();
             } catch (e) {
                 if (msg) {
@@ -4628,6 +4777,8 @@ function toggleBrokerPanel() {
 
         window.saveRoleSkin = saveRoleSkin;
         window.uploadRoleSkinForRole = uploadRoleSkinForRole;
+        window.setActiveRoleSkinTab = setActiveRoleSkinTab;
+        window.focusNextRoleSkinTab = focusNextRoleSkinTab;
 
         function ownerCatStateFromMainState(mainState) {
             const st = normalizeState(mainState || 'idle');
@@ -4861,13 +5012,20 @@ function toggleBrokerPanel() {
                 || isSpriteOverComputerDropZone(gameObject, SCENE_COMPUTER_DROP_MARGIN_HIT);
         }
 
-        function prependSummaryToMemo(summaryText, triggerName) {
+        function prependSummaryToMemo(summaryText, triggerName, summaryTitle = '') {
             const memoContent = document.getElementById('memo-content');
             if (!memoContent) return;
 
             const nowLabel = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-            const title = `【一键总结 ${nowLabel}】`;
-            const plain = `${summaryText || ''}\n\n触发人：${triggerName || '未知'}`;
+            const title = String(summaryTitle || '').trim() || `【一键总结 ${nowLabel}】`;
+            let contentBody = String(summaryText || '').trim();
+            if (contentBody.startsWith(title)) {
+                contentBody = contentBody.slice(title.length).trim();
+            }
+            if (!contentBody) {
+                contentBody = '今天暂未记录该角色工作内容';
+            }
+            const plain = `${contentBody}\n\n触发人：${triggerName || '未知'} · ${nowLabel}`;
             const html = [
                 '<div class="memo-summary-local">',
                 `<strong>${escapeHtml(title)}</strong><br>`,
@@ -5124,12 +5282,46 @@ function toggleBrokerPanel() {
             ].join('\n');
         }
 
+        function getRoleSummaryTitle(triggerRoleId, triggerName = '') {
+            const rid = String(triggerRoleId || '').trim().toLowerCase();
+            const fallback = rid ? rid.toUpperCase() : '角色';
+            const name = String(triggerName || '').trim() || fallback;
+            return `【${name} 今日工作总结】`;
+        }
+
+        function buildRoleOnlyFallbackSummaryText(roles, triggerRoleId) {
+            const safeRoles = normalizeTeamRoles(roles);
+            const trigger = safeRoles.find((r) => r.roleId === triggerRoleId) || null;
+            const title = getRoleSummaryTitle(triggerRoleId, trigger && trigger.name);
+            if (!trigger || !String(trigger.note || '').trim()) {
+                return `${title}\n今天暂未记录该角色工作内容`;
+            }
+
+            const roleState = normalizeState(trigger.state || 'idle');
+            const stateText = stateLabel(roleState);
+            const lines = [
+                title,
+                `当前状态：${stateText}`,
+                `今日进展：${trigger.note || '无'}`,
+            ];
+
+            if (roleState === 'error') {
+                lines.push('风险：当前存在异常阻塞，需优先处理。');
+            } else if (roleState === 'idle') {
+                lines.push('待办：请补充今日工作内容并继续推进。');
+            } else {
+                lines.push('待办：继续推进，完成后可再次拖拽更新。');
+            }
+            return lines.join('\n');
+        }
+
         async function triggerOneClickSummary(triggerRoleId) {
             const roles = normalizeTeamRoles(teamRoles);
             const triggerRole = roles.find(r => r.roleId === triggerRoleId);
             setSummaryStatusHint('总结生成中...', 'info');
 
             let summaryText = '';
+            let summaryMode = 'role-daily-v1';
             let usedFallback = false;
             try {
                 const res = await fetch('/one-click-summary', {
@@ -5142,28 +5334,23 @@ function toggleBrokerPanel() {
                     throw new Error((data && data.msg) || `HTTP ${res.status}`);
                 }
                 summaryText = String(data.summary);
+                summaryMode = String(data.mode || 'role-daily-v1');
             } catch (e) {
-                summaryText = buildRuleSummaryText(roles, triggerRoleId);
+                summaryText = buildRoleOnlyFallbackSummaryText(roles, triggerRoleId);
                 usedFallback = true;
-                console.warn('one-click-summary API failed, fallback local rule summary:', e);
+                console.warn('one-click-summary API failed, fallback role-only summary:', e);
             }
 
-            const digest = buildProjectDigest(roles, triggerRoleId);
-            const nudgedOwners = getNudgeOwners(triggerRoleId);
-            const nudgeLine = nudgedOwners.length > 0
-                ? `\n\n推进动作：已催办 ${nudgedOwners.join('、')} 同步当前进展。`
-                : `\n\n推进动作：当前无额外催办对象。`;
-            const digestLine = `\n\n触发人：${digest.triggerName}（已在电脑前发起项目盘点）`;
-            const finalSummaryText = summaryText + digestLine + nudgeLine;
+            const triggerName = triggerRole ? triggerRole.name : String(triggerRoleId || '').toUpperCase();
+            const summaryTitle = getRoleSummaryTitle(triggerRoleId, triggerName);
+            const finalSummaryText = summaryText.startsWith('【') ? summaryText : `${summaryTitle}\n${summaryText}`;
             setSummaryContent(finalSummaryText);
-            const triggerName = triggerRole ? triggerRole.name : digest.triggerName;
             const nowText = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-            const nudgeHint = nudgedOwners.length > 0 ? `，并催办 ${nudgedOwners.join('、')}` : '';
-            setSummaryStatusHint(`${triggerName} 于 ${nowText} 触发${nudgeHint}`, 'ok');
-            showSummaryBubble(`总结已生成：由 ${triggerName} 触发${nudgeHint}`);
+            setSummaryStatusHint(`${triggerName} 于 ${nowText} 触发今日总结`, 'ok');
+            showSummaryBubble(`${triggerName} 今日工作总结已生成`);
 
             // 强一致：同一个函数同时写 Summary + Yesterday Notes 本地 DOM。
-            prependSummaryToMemo(finalSummaryText, triggerName);
+            prependSummaryToMemo(finalSummaryText, triggerName, summaryTitle);
             flashLatestSummaryInMemo();
 
             // 同步留档到服务端；失败不回滚本地 Notes。
@@ -5175,7 +5362,7 @@ function toggleBrokerPanel() {
                         summary: finalSummaryText,
                         triggerRoleId,
                         roles,
-                        mode: usedFallback ? 'frontend-fallback-v2' : 'ui-sync-v2'
+                        mode: usedFallback ? 'frontend-role-daily-fallback-v1' : `ui-sync-${summaryMode}`
                     })
                 });
             } catch (e) {
