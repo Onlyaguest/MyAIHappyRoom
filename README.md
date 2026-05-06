@@ -46,6 +46,7 @@ cd backend && python3 app.py
 - 任务快照：`docs/tasks.md`
 - 验收记录：`docs/acceptance.md`
 - 决策记录：`docs/decisions.md`
+- MATA 对照：`docs/mata-gap-analysis.md`
 
 > 本项目由 **[Ring Hyacinth](https://x.com/ring_hyacinth)** 与 **[Simon Lee](https://x.com/simonxxoo)** 共同创建（co-created project），并与社区开发者（[@Zhaohan-Wang](https://github.com/Zhaohan-Wang)、[@Jah-yee](https://github.com/Jah-yee)、[@liaoandi](https://github.com/liaoandi)）一起持续维护和共建。
 > 欢迎提交 Issue 和 PR，也感谢每一位贡献者的支持。
