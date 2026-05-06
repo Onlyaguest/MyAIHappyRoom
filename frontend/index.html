@@ -2093,12 +2093,15 @@
                 if (data.success && data.memo) {
                     memoDate.textContent = data.date || '';
                     memoContent.innerHTML = data.memo.replace(/\n/g, '<br>');
+                    return true;
                 } else {
                     memoContent.innerHTML = '<div id="memo-placeholder">暂无昨日日记</div>';
+                    return false;
                 }
             } catch (e) {
                 console.error('加载 memo 失败:', e);
                 memoContent.innerHTML = '<div id="memo-placeholder">加载失败</div>';
+                return false;
             }
         }
 
@@ -2273,11 +2276,13 @@
             'guest_anim_1', 'guest_anim_2', 'guest_anim_3', 'guest_anim_4', 'guest_anim_5', 'guest_anim_6',
             'guest_role_1', 'guest_role_2', 'guest_role_3', 'guest_role_4', 'guest_role_5', 'guest_role_6'
         ];
-        const SCENE_SUMMARY_DROP_ZONE = { x1: 70, y1: 170, x2: 430, y2: 540 };
-        const SCENE_COMPUTER_CENTER = { x: 218, y: 417 };
-        const SCENE_COMPUTER_HIT_RADIUS = { x: 185, y: 165 };
-        const AREA_GRID_STEP_X = 32;
-        const AREA_GRID_STEP_Y = 26;
+        const SCENE_SUMMARY_DROP_ZONE = { x1: 40, y1: 120, x2: 520, y2: 610 };
+        const SCENE_COMPUTER_CENTER = { x: 220, y: 420 };
+        const SCENE_COMPUTER_HIT_RADIUS = { x: 250, y: 220 };
+        const SCENE_COMPUTER_DROP_MARGIN_HOT = 22;
+        const SCENE_COMPUTER_DROP_MARGIN_HIT = 88;
+        const AREA_GRID_STEP_X = 22;
+        const AREA_GRID_STEP_Y = 18;
         const TEAM_ROLE_DEFAULTS = [
             { roleId: 'pm', name: 'PM', role: 'Product / Project Manager', state: 'syncing', note: '拆分任务与验收口径', updated_at: new Date().toISOString() },
             { roleId: 'builder', name: 'Builder', role: 'Developer', state: 'executing', note: '实现功能与联调', updated_at: new Date().toISOString() },
@@ -4287,17 +4292,40 @@ function toggleBrokerPanel() {
             return `${agent.name} [${teamRoleTag(agent.roleId)} · ${st}${presenterSuffix}]`;
         }
 
-        function isInComputerDropZone(x, y) {
+        function isInComputerDropZone(x, y, margin = 0) {
             const inRect = (
-                x >= SCENE_SUMMARY_DROP_ZONE.x1 &&
-                x <= SCENE_SUMMARY_DROP_ZONE.x2 &&
-                y >= SCENE_SUMMARY_DROP_ZONE.y1 &&
-                y <= SCENE_SUMMARY_DROP_ZONE.y2
+                x >= (SCENE_SUMMARY_DROP_ZONE.x1 - margin) &&
+                x <= (SCENE_SUMMARY_DROP_ZONE.x2 + margin) &&
+                y >= (SCENE_SUMMARY_DROP_ZONE.y1 - margin) &&
+                y <= (SCENE_SUMMARY_DROP_ZONE.y2 + margin)
             );
-            const nx = (x - SCENE_COMPUTER_CENTER.x) / SCENE_COMPUTER_HIT_RADIUS.x;
-            const ny = (y - SCENE_COMPUTER_CENTER.y) / SCENE_COMPUTER_HIT_RADIUS.y;
+            const rx = SCENE_COMPUTER_HIT_RADIUS.x + margin;
+            const ry = SCENE_COMPUTER_HIT_RADIUS.y + margin;
+            const nx = (x - SCENE_COMPUTER_CENTER.x) / rx;
+            const ny = (y - SCENE_COMPUTER_CENTER.y) / ry;
             const inEllipse = (nx * nx + ny * ny) <= 1.0;
             return inRect || inEllipse;
+        }
+
+        function prependSummaryToMemo(summaryText, triggerName) {
+            const memoContent = document.getElementById('memo-content');
+            if (!memoContent) return;
+            const marker = `${triggerName || '触发人'}|${String(summaryText || '').slice(0, 120)}`;
+            if (memoContent.dataset.lastSummaryMarker === marker) return;
+            memoContent.dataset.lastSummaryMarker = marker;
+
+            const nowLabel = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            const title = `【一键总结 ${nowLabel}】`;
+            const plain = `${summaryText || ''}\n\n触发人：${triggerName || '未知'}`;
+            const html = [
+                '<div class="memo-summary-local">',
+                `<strong>${escapeHtml(title)}</strong><br>`,
+                `${escapeHtml(plain).replace(/\n/g, '<br>')}`,
+                '</div>',
+                '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.14);margin:8px 0;">'
+            ].join('');
+            const old = memoContent.innerHTML || '';
+            memoContent.innerHTML = html + old.replace('<div id="memo-placeholder">暂无昨日日记</div>', '');
         }
 
         function getNudgeOwners(triggerRoleId) {
@@ -4587,7 +4615,11 @@ function toggleBrokerPanel() {
                 }
             }
             // #18: show latest one-click summaries in Yesterday Notes panel.
-            loadMemo();
+            prependSummaryToMemo(summaryText, triggerName);
+            const synced = await loadMemo();
+            if (!synced) {
+                prependSummaryToMemo(summaryText, triggerName);
+            }
         }
 
         function bindSummaryDropzone() {
@@ -6126,7 +6158,8 @@ function toggleBrokerPanel() {
                     rec.nameText.x = dragX;
                     rec.nameText.y = dragY - 120;
                 }
-                const hot = isInComputerDropZone(dragX, dragY) || isInComputerDropZone(lastPointerWorld.x, lastPointerWorld.y);
+                const hot = isInComputerDropZone(dragX, dragY, SCENE_COMPUTER_DROP_MARGIN_HOT)
+                    || isInComputerDropZone(lastPointerWorld.x, lastPointerWorld.y, SCENE_COMPUTER_DROP_MARGIN_HOT);
                 setSummaryDropzoneHot(hot);
             });
 
@@ -6136,7 +6169,8 @@ function toggleBrokerPanel() {
                 const agentId = gameObject.__teamAgentId;
                 const px = Number.isFinite(pointer.worldX) ? pointer.worldX : lastPointerWorld.x;
                 const py = Number.isFinite(pointer.worldY) ? pointer.worldY : lastPointerWorld.y;
-                const hit = isInComputerDropZone(gameObject.x, gameObject.y) || isInComputerDropZone(px, py);
+                const hit = isInComputerDropZone(gameObject.x, gameObject.y, SCENE_COMPUTER_DROP_MARGIN_HIT)
+                    || isInComputerDropZone(px, py, SCENE_COMPUTER_DROP_MARGIN_HIT);
                 if (agentId) {
                     teamRolePinnedPositions[agentId] = { x: gameObject.x, y: gameObject.y, updatedAt: Date.now() };
                 }
