@@ -16,7 +16,9 @@
 - 当前已增加：
   - 团队角色状态区：`PM / Builder / Reviewer` 三角色默认可见，展示角色定位、状态、说明、更新时间。
   - 状态切换入口：角色卡片内 `切换状态` 按钮（同时写入 `/team-status` API）。
-  - 一键总结交互：将角色卡片拖到办公室电脑热区，触发总结；默认规则总结，且预留 `/one-click-summary` API。
+  - 角色入场：`PM / Builder / Reviewer` 作为办公室场景内像素人首屏可见，不仅是面板卡片。
+  - 一键总结交互：支持拖角色卡片或场景像素人到办公室电脑热区；触发后生成“项目状态 + 催办建议”，并写入总结面板。
+  - 壁炉展示看板：壁炉上方新增看板，支持链接加载 + PPT/PPTX/PDF 上传（MVP 为文件打开/下载回退），支持指定 `PM/Builder/Reviewer` 进入演讲位。
 
 ### 快速启动（MyAIHappyRoom）
 
@@ -30,8 +32,9 @@ cd backend && python3 app.py
 
 打开 `http://127.0.0.1:19000`：
 - 首页可见办公室背景、角色/访客面板、状态面板。
-- 在右下“团队 / 访客”面板可查看 `PM/Builder/Reviewer`。
-- 拖动角色卡片到游戏内“电脑前热区”可触发“一键总结”。
+- `PM/Builder/Reviewer` 三个像素人默认在办公室内可见。
+- 拖动角色卡片或像素人到游戏内“电脑前热区”可触发“一键总结”。
+- 壁炉上方看板可加载链接，或上传 `PPT/PPTX/PDF` 进行共享展示。
 
 > 本项目由 **[Ring Hyacinth](https://x.com/ring_hyacinth)** 与 **[Simon Lee](https://x.com/simonxxoo)** 共同创建（co-created project），并与社区开发者（[@Zhaohan-Wang](https://github.com/Zhaohan-Wang)、[@Jah-yee](https://github.com/Jah-yee)、[@liaoandi](https://github.com/liaoandi)）一起持续维护和共建。
 > 欢迎提交 Issue 和 PR，也感谢每一位贡献者的支持。
@@ -231,6 +234,13 @@ python3 office-agent-push.py
 | `POST /join-agent` | 访客加入办公室 |
 | `POST /agent-push` | 访客推送状态 |
 | `POST /leave-agent` | 访客离开 |
+| `GET /team-status` | 获取 PM/Builder/Reviewer 团队角色状态 |
+| `POST /team-status` | 更新指定团队角色状态/说明 |
+| `POST /one-click-summary` | 生成一键总结（支持前端规则兜底） |
+| `GET /presentation-board` | 获取壁炉看板状态（链接/文件/演讲位） |
+| `POST /presentation-board` | 更新壁炉看板状态 |
+| `POST /presentation-board/upload` | 上传 `PPT/PPTX/PDF` 到壁炉看板 |
+| `GET /presentation-board/files/<name>` | 获取已上传看板文件 |
 | `GET /yesterday-memo` | 获取昨日小记 |
 | `GET /config/gemini` | 获取 Gemini API 配置 |
 | `POST /config/gemini` | 设置 Gemini API 配置 |

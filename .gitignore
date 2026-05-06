@@ -15,6 +15,7 @@ venv/
 state.json
 agents-state.json
 runtime-config.json
+presentation-board.json
 *.log
 *.out
 *.pid
@@ -28,6 +29,7 @@ backend.log
 # Generated / mutable assets (local only)
 assets/bg-history/
 assets/home-favorites/
+uploads/presentation-board/
 frontend/office_bg.png
 frontend/*.bak
 layers/

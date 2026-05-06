@@ -203,6 +203,97 @@
             opacity: 1;
             transform: translateY(0);
         }
+        #fireplace-board-stage {
+            position: absolute;
+            left: 50%;
+            top: 74px;
+            width: 420px;
+            height: 238px;
+            transform: translateX(-50%);
+            border: 3px solid #2f3b52;
+            border-radius: 10px;
+            background: rgba(6, 10, 20, 0.86);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+            z-index: 24;
+            overflow: hidden;
+            pointer-events: auto;
+        }
+        #fireplace-board-header {
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 10px;
+            background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
+            border-bottom: 1px solid #334155;
+            color: #f8fafc;
+            font-size: 11px;
+            letter-spacing: 0.3px;
+        }
+        #fireplace-board-status {
+            color: #93c5fd;
+            font-size: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 220px;
+        }
+        #fireplace-board-body {
+            position: relative;
+            width: 100%;
+            height: calc(100% - 30px);
+            background: #0b1220;
+        }
+        #fireplace-board-iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            background: #fff;
+            display: none;
+        }
+        #fireplace-board-fallback {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px;
+            text-align: center;
+            color: #cbd5e1;
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        #fireplace-board-fallback a {
+            color: #93c5fd;
+            word-break: break-all;
+        }
+        #fireplace-board-filecard {
+            display: none;
+            position: absolute;
+            inset: 0;
+            padding: 12px;
+            color: #e2e8f0;
+            font-size: 12px;
+            line-height: 1.5;
+            background: linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%);
+        }
+        #fireplace-board-filecard .file-name {
+            color: #f8fafc;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+        #fireplace-board-filecard .file-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        #fireplace-board-filecard .file-actions a {
+            color: #93c5fd;
+            font-size: 11px;
+        }
         /* 状态控制栏 */
         #control-bar {
             position: relative;
@@ -979,6 +1070,64 @@
         #summary-content::-webkit-scrollbar { width: 6px; }
         #summary-content::-webkit-scrollbar-track { background: #1a1a2e; }
         #summary-content::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+        #board-control-panel {
+            border: 1px solid #334155;
+            border-radius: 6px;
+            background: #0b1220;
+            padding: 7px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            min-height: 108px;
+        }
+        #board-control-title {
+            color: #facc15;
+            font-size: 11px;
+        }
+        .board-control-row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .board-control-row input[type="text"],
+        .board-control-row select {
+            flex: 1;
+            min-width: 120px;
+            background: #0f172a;
+            color: #e2e8f0;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-family: 'ArkPixel', monospace;
+            font-size: 11px;
+        }
+        .board-control-row button,
+        .board-file-btn {
+            border: 1px solid #475569;
+            border-radius: 4px;
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 4px 6px;
+            font-family: 'ArkPixel', monospace;
+            font-size: 10px;
+            cursor: pointer;
+        }
+        .board-control-row button:hover,
+        .board-file-btn:hover {
+            border-color: #60a5fa;
+            background: #0f172a;
+        }
+        #board-file-input {
+            display: none;
+        }
+        #board-page-info,
+        #board-presenter-status,
+        #board-upload-status {
+            color: #94a3b8;
+            font-size: 10px;
+            line-height: 1.4;
+        }
         .guest-agent-item {
             display: flex;
             align-items: center;
@@ -1189,6 +1338,12 @@
                 max-width: 48vw;
                 font-size: 11px;
             }
+            #fireplace-board-stage {
+                top: 8px;
+                width: 70vw;
+                height: 25vh;
+                min-height: 150px;
+            }
 
             #bottom-panels {
                 width: 100vw;
@@ -1264,6 +1419,9 @@
             }
             #team-role-list {
                 max-height: 168px;
+            }
+            #board-control-panel {
+                min-height: 156px;
             }
             .team-role-item {
                 gap: 6px;
@@ -1353,6 +1511,28 @@
     <div id="main-stage">
         <div id="game-container">
             <div id="game-skeleton"><div class="hint">正在进入像素办公室…</div></div>
+            <div id="fireplace-board-stage">
+                <div id="fireplace-board-header">
+                    <span id="fireplace-board-title">壁炉展示看板</span>
+                    <span id="fireplace-board-status">未加载内容</span>
+                </div>
+                <div id="fireplace-board-body">
+                    <iframe id="fireplace-board-iframe" title="Fireplace Presentation Board"></iframe>
+                    <div id="fireplace-board-filecard">
+                        <div class="file-name" id="fireplace-board-filename">暂无文件</div>
+                        <div id="fireplace-board-filedesc">已上传文件，可下载或新窗口打开查看。</div>
+                        <div class="file-actions">
+                            <a id="fireplace-board-open-file" href="#" target="_blank" rel="noopener noreferrer">新窗口打开</a>
+                            <a id="fireplace-board-download-file" href="#" target="_blank" rel="noopener noreferrer">下载文件</a>
+                        </div>
+                    </div>
+                    <div id="fireplace-board-fallback">
+                        <div>这里是壁炉上方展示看板</div>
+                        <div>可加载网页链接或上传 PPT/PDF 共享观看</div>
+                        <a id="fireplace-board-open-link" href="#" target="_blank" rel="noopener noreferrer" style="display:none;">新窗口打开当前链接</a>
+                    </div>
+                </div>
+            </div>
             <div id="summary-dropzone">拖角色卡片或像素人到电脑前<br/>触发一键总结</div>
             <div id="summary-bubble"></div>
             <div id="status-text">加载中...</div>
@@ -1395,6 +1575,36 @@
                     <span id="summary-status-hint">拖到电脑前触发</span>
                 </div>
                 <div id="summary-content">暂未生成总结。</div>
+            </div>
+            <div id="board-control-panel">
+                <div id="board-control-title">壁炉看板控制</div>
+                <div class="board-control-row">
+                    <input id="board-link-input" type="text" placeholder="输入网页链接（https://...）" />
+                    <button onclick="loadPresentationLink()">加载链接</button>
+                </div>
+                <div class="board-control-row">
+                    <button onclick="refreshPresentationBoard()">刷新</button>
+                    <button onclick="clearPresentationBoard()">清空</button>
+                    <label class="board-file-btn" for="board-file-input">上传 PPT/PDF</label>
+                    <input id="board-file-input" type="file" accept=".ppt,.pptx,.pdf" onchange="uploadPresentationFile(event)" />
+                </div>
+                <div class="board-control-row">
+                    <button onclick="changeBoardPage(-1)">上一页</button>
+                    <button onclick="changeBoardPage(1)">下一页</button>
+                    <span id="board-page-info">页码 1 / 1</span>
+                </div>
+                <div class="board-control-row">
+                    <select id="board-presenter-select">
+                        <option value="">选择演讲角色</option>
+                        <option value="pm">PM</option>
+                        <option value="builder">Builder</option>
+                        <option value="reviewer">Reviewer</option>
+                    </select>
+                    <button onclick="assignBoardPresenter()">指定演讲位</button>
+                    <button onclick="clearBoardPresenter()">清空演讲位</button>
+                </div>
+                <div id="board-presenter-status">演讲位：未指定</div>
+                <div id="board-upload-status">看板状态：未加载</div>
             </div>
             <div id="guest-agent-list">
                 <div style="color:#9ca3af;font-size:12px;text-align:center;padding:20px 0;">正在加载访客...</div>
@@ -1961,6 +2171,24 @@
         let dragDropTriggered = false;
         let lastPointerWorld = { x: 0, y: 0 };
         let isDraggingTeamSprite = false;
+        const PRESENTATION_SOURCE_TYPES = new Set(['none', 'link', 'file']);
+        const PRESENTATION_MIME_PDF = 'application/pdf';
+        const PRESENTATION_FETCH_INTERVAL = 6000;
+        let presentationBoardState = {
+            sourceType: 'none',
+            sourceUrl: '',
+            sourceTitle: '',
+            sourceBlockedHint: '',
+            fileName: '',
+            fileUrl: '',
+            fileMime: '',
+            currentPage: 1,
+            totalPages: 1,
+            presenterRoleId: '',
+            presenterNote: '',
+            updated_at: ''
+        };
+        let lastPresentationFetch = 0;
 
         // 状态控制栏函数（用于测试）
         function setState(state, detail) {
@@ -3659,16 +3887,29 @@ function toggleBrokerPanel() {
 
         function getTeamRoleSceneActors() {
             const roles = normalizeTeamRoles(teamRoles);
+            const presenterRoleId = String((presentationBoardState && presentationBoardState.presenterRoleId) || '').trim().toLowerCase();
+            const presenterTopic = String(
+                (presentationBoardState && (
+                    presentationBoardState.sourceTitle ||
+                    presentationBoardState.fileName ||
+                    presentationBoardState.sourceUrl
+                )) || ''
+            ).trim();
             return roles.map((role) => {
                 const st = normalizeState(role.state || 'idle');
+                const isPresenter = presenterRoleId && presenterRoleId === role.roleId;
+                const presenterBubble = presenterTopic
+                    ? `正在讲解：${presenterTopic}`
+                    : '正在讲解壁炉看板内容';
                 return {
                     agentId: `team_role_${role.roleId}`,
                     name: role.name || String(role.roleId || '').toUpperCase(),
                     state: st,
-                    area: st === 'error' ? 'error' : (st === 'idle' ? 'breakroom' : 'writing'),
+                    area: isPresenter ? 'presenter' : (st === 'error' ? 'error' : (st === 'idle' ? 'breakroom' : 'writing')),
                     isTeamRole: true,
+                    isPresenter,
                     roleId: role.roleId,
-                    bubbleText: role.note || ''
+                    bubbleText: isPresenter ? presenterBubble : (role.note || '')
                 };
             });
         }
@@ -3767,7 +4008,8 @@ function toggleBrokerPanel() {
         function getSceneActorNameText(agent) {
             if (!agent || !agent.isTeamRole) return (agent && agent.name) || '访客';
             const st = stateLabel(normalizeState(agent.state || 'idle'));
-            return `${agent.name} [${teamRoleTag(agent.roleId)} · ${st}]`;
+            const presenterSuffix = agent.isPresenter ? ' · 讲解中' : '';
+            return `${agent.name} [${teamRoleTag(agent.roleId)} · ${st}${presenterSuffix}]`;
         }
 
         function isInComputerDropZone(x, y) {
@@ -4144,6 +4386,372 @@ function toggleBrokerPanel() {
         window.onTeamRoleDragEnd = onTeamRoleDragEnd;
         window.cycleTeamRoleState = cycleTeamRoleState;
 
+        function normalizePresentationBoardState(input) {
+            const base = {
+                sourceType: 'none',
+                sourceUrl: '',
+                sourceTitle: '',
+                sourceBlockedHint: '',
+                fileName: '',
+                fileUrl: '',
+                fileMime: '',
+                currentPage: 1,
+                totalPages: 1,
+                presenterRoleId: '',
+                presenterNote: '',
+                updated_at: ''
+            };
+            const raw = (input && typeof input === 'object') ? input : {};
+            const out = { ...base };
+            Object.keys(base).forEach((k) => {
+                if (typeof raw[k] !== 'undefined' && raw[k] !== null) out[k] = raw[k];
+            });
+            const sourceType = String(out.sourceType || 'none').trim().toLowerCase();
+            out.sourceType = PRESENTATION_SOURCE_TYPES.has(sourceType) ? sourceType : 'none';
+            out.sourceUrl = String(out.sourceUrl || '').trim();
+            out.sourceTitle = String(out.sourceTitle || '').trim();
+            out.sourceBlockedHint = String(out.sourceBlockedHint || '').trim();
+            out.fileName = String(out.fileName || '').trim();
+            out.fileUrl = String(out.fileUrl || '').trim();
+            out.fileMime = String(out.fileMime || '').trim();
+            try { out.currentPage = Math.max(1, parseInt(out.currentPage, 10) || 1); } catch (e) { out.currentPage = 1; }
+            try { out.totalPages = Math.max(1, parseInt(out.totalPages, 10) || 1); } catch (e) { out.totalPages = 1; }
+            if (out.currentPage > out.totalPages) out.currentPage = out.totalPages;
+            const rid = String(out.presenterRoleId || '').trim().toLowerCase();
+            out.presenterRoleId = ['pm', 'builder', 'reviewer'].includes(rid) ? rid : '';
+            out.presenterNote = String(out.presenterNote || '').trim();
+            out.updated_at = String(out.updated_at || '').trim();
+            return out;
+        }
+
+        function boardRoleLabel(roleId) {
+            const map = { pm: 'PM', builder: 'Builder', reviewer: 'Reviewer' };
+            return map[String(roleId || '').toLowerCase()] || 'Unknown';
+        }
+
+        function boardLikelyBlocked(urlString) {
+            try {
+                const host = new URL(urlString).hostname.toLowerCase();
+                return (
+                    host.endsWith('github.com') ||
+                    host.endsWith('docs.google.com') ||
+                    host.endsWith('drive.google.com') ||
+                    host.endsWith('feishu.cn') ||
+                    host.endsWith('larksuite.com') ||
+                    host.endsWith('office.com')
+                );
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function normalizeBoardUrl(raw) {
+            const txt = String(raw || '').trim();
+            if (!txt) return '';
+            let parsed;
+            try {
+                parsed = new URL(txt);
+            } catch (e) {
+                return '';
+            }
+            if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+            return parsed.toString();
+        }
+
+        function setBoardUploadHint(text, type) {
+            const el = document.getElementById('board-upload-status');
+            if (!el) return;
+            el.textContent = text || '看板状态：未加载';
+            const color = {
+                ok: '#86efac',
+                warn: '#fca5a5',
+                info: '#93c5fd'
+            };
+            el.style.color = color[type] || '#93c5fd';
+        }
+
+        function boardTopicSummary(state) {
+            const s = normalizePresentationBoardState(state);
+            return s.sourceTitle || s.fileName || s.sourceUrl || '当前项目看板';
+        }
+
+        function renderPresentationBoard() {
+            presentationBoardState = normalizePresentationBoardState(presentationBoardState);
+            const state = presentationBoardState;
+
+            const headerStatus = document.getElementById('fireplace-board-status');
+            const iframe = document.getElementById('fireplace-board-iframe');
+            const fallback = document.getElementById('fireplace-board-fallback');
+            const openLink = document.getElementById('fireplace-board-open-link');
+            const filecard = document.getElementById('fireplace-board-filecard');
+            const fileNameEl = document.getElementById('fireplace-board-filename');
+            const fileDescEl = document.getElementById('fireplace-board-filedesc');
+            const openFile = document.getElementById('fireplace-board-open-file');
+            const downloadFile = document.getElementById('fireplace-board-download-file');
+            const pageInfo = document.getElementById('board-page-info');
+            const presenterStatus = document.getElementById('board-presenter-status');
+            const linkInput = document.getElementById('board-link-input');
+            const presenterSelect = document.getElementById('board-presenter-select');
+            if (!headerStatus || !fallback || !pageInfo || !presenterStatus) return;
+
+            const fallbackTitle = fallback.querySelector('div:nth-child(1)');
+            const fallbackDesc = fallback.querySelector('div:nth-child(2)');
+            if (linkInput && document.activeElement !== linkInput) {
+                linkInput.value = state.sourceUrl || '';
+            }
+            if (presenterSelect && document.activeElement !== presenterSelect) {
+                presenterSelect.value = state.presenterRoleId || '';
+            }
+
+            if (iframe) {
+                iframe.style.display = 'none';
+                if (state.sourceType !== 'link') iframe.src = 'about:blank';
+            }
+            if (filecard) filecard.style.display = 'none';
+            fallback.style.display = 'flex';
+            if (openLink) {
+                openLink.style.display = 'none';
+                openLink.href = '#';
+            }
+            if (fallbackTitle) fallbackTitle.textContent = '这里是壁炉上方展示看板';
+            if (fallbackDesc) fallbackDesc.textContent = '可加载网页链接或上传 PPT/PDF 共享观看';
+
+            if (state.sourceType === 'link' && state.sourceUrl) {
+                headerStatus.textContent = state.sourceTitle || state.sourceUrl;
+                if (iframe && !boardLikelyBlocked(state.sourceUrl)) {
+                    iframe.style.display = 'block';
+                    iframe.src = state.sourceUrl;
+                    fallback.style.display = 'none';
+                    setBoardUploadHint('看板状态：链接已加载（若空白可新窗口打开）', 'ok');
+                } else {
+                    fallback.style.display = 'flex';
+                    if (fallbackTitle) fallbackTitle.textContent = '该站点可能限制 iframe 嵌入';
+                    if (fallbackDesc) fallbackDesc.textContent = '请点击下方“新窗口打开当前链接”进行共享观看。';
+                    setBoardUploadHint('看板状态：链接已保存，使用新窗口回退展示', 'warn');
+                }
+                if (openLink) {
+                    openLink.style.display = 'inline';
+                    openLink.href = state.sourceUrl;
+                }
+                pageInfo.textContent = '页码：链接模式';
+            } else if (state.sourceType === 'file' && state.fileUrl) {
+                headerStatus.textContent = state.fileName || '已上传文件';
+                if (filecard) filecard.style.display = 'block';
+                fallback.style.display = 'none';
+                if (fileNameEl) fileNameEl.textContent = state.fileName || '未命名文件';
+                if (fileDescEl) {
+                    fileDescEl.textContent = 'MVP：已上传文件，可新窗口打开或下载；自动转换/逐页预览后续增强。';
+                }
+                if (openFile) openFile.href = state.fileUrl;
+                if (downloadFile) {
+                    downloadFile.href = state.fileUrl;
+                    downloadFile.setAttribute('download', state.fileName || 'presentation-file');
+                }
+                pageInfo.textContent = `页码 ${state.currentPage} / ${state.totalPages}`;
+                setBoardUploadHint(`看板状态：文件已上传（${state.fileName || '未命名文件'}）`, 'ok');
+            } else {
+                headerStatus.textContent = '未加载内容';
+                pageInfo.textContent = '页码：-';
+                setBoardUploadHint('看板状态：未加载（支持链接 / PPT / PPTX / PDF）', 'info');
+            }
+
+            if (state.presenterRoleId) {
+                const suffix = state.presenterNote ? `｜${state.presenterNote}` : '';
+                presenterStatus.textContent = `演讲位：${boardRoleLabel(state.presenterRoleId)} 正在讲解${suffix}`;
+                presenterStatus.style.color = '#fbbf24';
+            } else {
+                presenterStatus.textContent = '演讲位：未指定';
+                presenterStatus.style.color = '#94a3b8';
+            }
+        }
+
+        async function fetchPresentationBoard(options = {}) {
+            const { quiet = false } = options || {};
+            try {
+                const res = await fetch('/presentation-board?t=' + Date.now(), { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok || !data.ok || !data.state) {
+                    throw new Error((data && data.msg) || `HTTP ${res.status}`);
+                }
+                presentationBoardState = normalizePresentationBoardState(data.state);
+                renderPresentationBoard();
+                if (game) renderGuestAgentsInScene();
+            } catch (e) {
+                presentationBoardState = normalizePresentationBoardState(presentationBoardState);
+                renderPresentationBoard();
+                if (!quiet) setBoardUploadHint('看板接口异常，已保留本地展示状态', 'warn');
+                console.warn('fetchPresentationBoard failed:', e);
+            }
+        }
+
+        async function savePresentationBoardPatch(patch) {
+            const body = (patch && typeof patch === 'object') ? patch : {};
+            const res = await fetch('/presentation-board', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok || !data.state) {
+                throw new Error((data && data.msg) || `HTTP ${res.status}`);
+            }
+            presentationBoardState = normalizePresentationBoardState(data.state);
+            renderPresentationBoard();
+            if (game) renderGuestAgentsInScene();
+            return presentationBoardState;
+        }
+
+        async function loadPresentationLink() {
+            const input = document.getElementById('board-link-input');
+            const nextUrl = normalizeBoardUrl(input ? input.value : '');
+            if (!nextUrl) {
+                setBoardUploadHint('请输入合法链接（http/https）', 'warn');
+                return;
+            }
+            let title = nextUrl;
+            try { title = new URL(nextUrl).hostname || nextUrl; } catch (e) {}
+            try {
+                await savePresentationBoardPatch({
+                    sourceType: 'link',
+                    sourceUrl: nextUrl,
+                    sourceTitle: title,
+                    sourceBlockedHint: boardLikelyBlocked(nextUrl) ? '该站点可能禁止 iframe 嵌入' : '',
+                    fileName: '',
+                    fileUrl: '',
+                    fileMime: '',
+                    currentPage: 1,
+                    totalPages: 1
+                });
+                setBoardUploadHint('链接已保存并尝试加载', 'ok');
+            } catch (e) {
+                setBoardUploadHint(`链接保存失败：${e.message || e}`, 'warn');
+            }
+        }
+
+        async function refreshPresentationBoard() {
+            setBoardUploadHint('正在刷新看板状态...', 'info');
+            await fetchPresentationBoard();
+        }
+
+        async function clearPresentationBoard() {
+            try {
+                await savePresentationBoardPatch({
+                    sourceType: 'none',
+                    sourceUrl: '',
+                    sourceTitle: '',
+                    sourceBlockedHint: '',
+                    fileName: '',
+                    fileUrl: '',
+                    fileMime: '',
+                    currentPage: 1,
+                    totalPages: 1
+                });
+                setBoardUploadHint('看板内容已清空', 'ok');
+            } catch (e) {
+                setBoardUploadHint(`清空失败：${e.message || e}`, 'warn');
+            }
+        }
+
+        async function uploadPresentationFile(event) {
+            const input = event && event.target;
+            const file = input && input.files && input.files[0];
+            if (!file) return;
+            const name = String(file.name || '');
+            const ext = name.toLowerCase().split('.').pop();
+            const allowed = new Set(['ppt', 'pptx', 'pdf']);
+            if (!allowed.has(ext)) {
+                setBoardUploadHint('仅支持 .ppt / .pptx / .pdf', 'warn');
+                if (input) input.value = '';
+                return;
+            }
+            const limit = 30 * 1024 * 1024;
+            if (Number(file.size || 0) > limit) {
+                setBoardUploadHint('文件过大（最大 30MB）', 'warn');
+                if (input) input.value = '';
+                return;
+            }
+            setBoardUploadHint(`上传中：${name}`, 'info');
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const res = await fetch('/presentation-board/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok || !data.state) {
+                    throw new Error((data && data.msg) || `HTTP ${res.status}`);
+                }
+                presentationBoardState = normalizePresentationBoardState(data.state);
+                renderPresentationBoard();
+                if (game) renderGuestAgentsInScene();
+                setBoardUploadHint(`上传成功：${name}`, 'ok');
+            } catch (e) {
+                setBoardUploadHint(`上传失败：${e.message || e}`, 'warn');
+            } finally {
+                if (input) input.value = '';
+            }
+        }
+
+        async function changeBoardPage(delta) {
+            const s = normalizePresentationBoardState(presentationBoardState);
+            if (s.sourceType !== 'file') {
+                setBoardUploadHint('当前不是文件模式，无可翻页内容', 'warn');
+                return;
+            }
+            if ((s.fileMime || '').toLowerCase() !== PRESENTATION_MIME_PDF) {
+                setBoardUploadHint('MVP：PPT/PPTX 暂未启用自动翻页（可下载或新窗口打开）', 'info');
+                return;
+            }
+            const next = Math.max(1, Math.min(s.totalPages, s.currentPage + Number(delta || 0)));
+            if (next === s.currentPage) return;
+            try {
+                await savePresentationBoardPatch({ currentPage: next });
+                setBoardUploadHint(`已切到第 ${next} 页`, 'ok');
+            } catch (e) {
+                setBoardUploadHint(`翻页失败：${e.message || e}`, 'warn');
+            }
+        }
+
+        async function assignBoardPresenter() {
+            const select = document.getElementById('board-presenter-select');
+            const roleId = String(select ? (select.value || '') : '').trim().toLowerCase();
+            if (!['pm', 'builder', 'reviewer'].includes(roleId)) {
+                setBoardUploadHint('请先选择演讲角色', 'warn');
+                return;
+            }
+            const topic = boardTopicSummary(presentationBoardState);
+            try {
+                await savePresentationBoardPatch({
+                    presenterRoleId: roleId,
+                    presenterNote: `正在讲解 ${topic}`
+                });
+                setBoardUploadHint(`${boardRoleLabel(roleId)} 已进入演讲位`, 'ok');
+            } catch (e) {
+                setBoardUploadHint(`指定演讲位失败：${e.message || e}`, 'warn');
+            }
+        }
+
+        async function clearBoardPresenter() {
+            try {
+                await savePresentationBoardPatch({
+                    presenterRoleId: '',
+                    presenterNote: ''
+                });
+                setBoardUploadHint('已清空演讲位', 'ok');
+            } catch (e) {
+                setBoardUploadHint(`清空演讲位失败：${e.message || e}`, 'warn');
+            }
+        }
+
+        window.loadPresentationLink = loadPresentationLink;
+        window.refreshPresentationBoard = refreshPresentationBoard;
+        window.clearPresentationBoard = clearPresentationBoard;
+        window.uploadPresentationFile = uploadPresentationFile;
+        window.changeBoardPage = changeBoardPage;
+        window.assignBoardPresenter = assignBoardPresenter;
+        window.clearBoardPresenter = clearBoardPresenter;
+
         function getAreaRect(area) {
             // 区域坐标（海辛提供，左上-右下；这里的 x/y 作为 sprite 底部锚点坐标来用）
             // 休息区域范围（511,262）（841,621）
@@ -4152,7 +4760,8 @@ function toggleBrokerPanel() {
             const rects = {
                 breakroom: { x1: 511, y1: 262, x2: 841, y2: 621 },
                 writing:   { x1: 190, y1: 526, x2: 380, y2: 683 },
-                error:     { x1: 932, y1: 275, x2: 1109, y2: 327 }
+                error:     { x1: 932, y1: 275, x2: 1109, y2: 327 },
+                presenter: { x1: 720, y1: 285, x2: 920, y2: 410 }
             };
             return rects[area] || rects.breakroom;
         }
@@ -4197,6 +4806,11 @@ function toggleBrokerPanel() {
                     { x: 990, y: 260 },
                     { x: 1050, y: 350 },
                     { x: 940, y: 310 }
+                ],
+                presenter: [
+                    { x: 760, y: 338 },
+                    { x: 828, y: 332 },
+                    { x: 886, y: 346 }
                 ]
             };
             const arr = map[area] || map.breakroom;
@@ -4209,7 +4823,7 @@ function toggleBrokerPanel() {
             const teamActors = getTeamRoleSceneActors();
             const sceneActors = [...teamActors, ...visitors];
             const seenIds = new Set();
-            let idxBreak = 0, idxWrite = 0, idxError = 0;
+            let idxBreak = 0, idxWrite = 0, idxError = 0, idxPresenter = 0;
 
             sceneActors.forEach(agent => {
                 const id = agent.agentId;
@@ -4218,10 +4832,17 @@ function toggleBrokerPanel() {
                 const isDemo = !!agent.isDemo || (DEMO_MODE && (id === 'demo_nika' || id === 'demo_mercury' || agent.name === '尼卡' || agent.name === '水星'));
                 const area = agent.area || (agent.state === 'error' ? 'error' : (agent.state === 'idle' ? 'breakroom' : 'writing'));
 
-                const idx = area === 'breakroom' ? idxBreak++ : area === 'error' ? idxError++ : idxWrite++;
+                const idx = area === 'breakroom'
+                    ? idxBreak++
+                    : area === 'error'
+                        ? idxError++
+                        : area === 'presenter'
+                            ? idxPresenter++
+                            : idxWrite++;
                 const p = isDemo
                     ? randomPointInRect(getAreaRect(area))
                     : getAreaPoint(area, idx);
+                const nameOffset = isDemo ? 80 : (agent.isPresenter ? 98 : 120);
 
                 if (!guestSprites[id]) {
                     // 优先用图标：demo visitor 有专门映射
@@ -4278,7 +4899,7 @@ function toggleBrokerPanel() {
                     // demo 水星下移 10px（仅 demo_mercury）
                     const yOffset = (DEMO_MODE && (agent.agentId === 'demo_mercury' || agent.name === '水星')) ? 10 : 0;
 
-                    const nameTextY = isDemo ? ((p.y + yOffset) - 80) : ((p.y + yOffset) - 120);
+                    const nameTextY = (p.y + yOffset) - nameOffset;
                     const nameText = game.add.text(p.x, nameTextY, getSceneActorNameText(agent), {
                         fontFamily: 'ArkPixel, monospace',
                         fontSize: isDemo ? '16px' : '15px',
@@ -4296,7 +4917,14 @@ function toggleBrokerPanel() {
                         sprite.__teamAgentId = id;
                     }
 
-                    guestSprites[id] = { sprite, nameText, isTeamRole: !!agent.isTeamRole, roleId: agent.roleId || null, state: normalizeState(agent.state || 'idle') };
+                    guestSprites[id] = {
+                        sprite,
+                        nameText,
+                        isTeamRole: !!agent.isTeamRole,
+                        isPresenter: !!agent.isPresenter,
+                        roleId: agent.roleId || null,
+                        state: normalizeState(agent.state || 'idle')
+                    };
                 } else {
                     const g = guestSprites[id];
                     const yOffset = (DEMO_MODE && (agent.agentId === 'demo_mercury' || agent.name === '水星')) ? 10 : 0;
@@ -4333,10 +4961,11 @@ function toggleBrokerPanel() {
                         g.sprite.x = p.x;
                         g.sprite.y = p.y + yOffset;
                         g.nameText.x = p.x;
-                        g.nameText.y = (p.y + yOffset) - 120;
+                        g.nameText.y = (p.y + yOffset) - nameOffset;
                     }
 
                     g.isTeamRole = !!agent.isTeamRole;
+                    g.isPresenter = !!agent.isPresenter;
                     g.roleId = agent.roleId || g.roleId || null;
                     g.state = normalizeState(agent.state || 'idle');
                     g.nameText.setText(getSceneActorNameText(agent));
@@ -5242,6 +5871,7 @@ function toggleBrokerPanel() {
             loadMemo();
             bindSummaryDropzone();
             fetchTeamRoles();
+            fetchPresentationBoard();
 
             fetchStatus();
             fetchGuestAgents();
@@ -5251,6 +5881,10 @@ function toggleBrokerPanel() {
             if (time - lastFetch > FETCH_INTERVAL) { fetchStatus(); lastFetch = time; }
             if (time - lastGuestAgentsFetch > GUEST_AGENTS_FETCH_INTERVAL) { fetchGuestAgents(); lastGuestAgentsFetch = time; }
             if (time - lastTeamRolesFetch > TEAM_ROLES_FETCH_INTERVAL) { fetchTeamRoles(); lastTeamRolesFetch = time; }
+            if (time - lastPresentationFetch > PRESENTATION_FETCH_INTERVAL) {
+                fetchPresentationBoard({ quiet: true });
+                lastPresentationFetch = time;
+            }
 
             // 兜底：非 idle 时确保机房动画在播，idle 时静止
             const effectiveStateForServer = pendingDesiredState || currentState;

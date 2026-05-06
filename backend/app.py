@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import threading
 from pathlib import Path
+from werkzeug.utils import secure_filename
 from security_utils import is_production_mode, is_strong_secret, is_strong_drawer_pass
 from memo_utils import get_yesterday_date_str, sanitize_content, extract_memo_from_file
 from store_utils import (
@@ -61,6 +62,10 @@ HOME_FAVORITES_INDEX_FILE = os.path.join(HOME_FAVORITES_DIR, "index.json")
 HOME_FAVORITES_MAX = 30
 ASSET_POSITIONS_FILE = os.path.join(ROOT_DIR, "asset-positions.json")
 TEAM_STATUS_FILE = os.path.join(ROOT_DIR, "team-status.json")
+PRESENTATION_BOARD_FILE = os.path.join(ROOT_DIR, "presentation-board.json")
+PRESENTATION_UPLOAD_DIR = os.path.join(ROOT_DIR, "uploads", "presentation-board")
+PRESENTATION_MAX_UPLOAD_BYTES = int(os.getenv("PRESENTATION_MAX_UPLOAD_BYTES", str(30 * 1024 * 1024)))
+PRESENTATION_ALLOWED_EXTS = {".ppt", ".pptx", ".pdf"}
 
 # 性能保护：默认关闭“每次打开页面随机换背景”，避免首页首屏被磁盘复制拖慢
 AUTO_ROTATE_HOME_ON_PAGE_OPEN = (os.getenv("AUTO_ROTATE_HOME_ON_PAGE_OPEN", "0").strip().lower() in {"1", "true", "yes", "on"})
@@ -430,6 +435,82 @@ def save_team_status(roles):
 
     with open(TEAM_STATUS_FILE, "w", encoding="utf-8") as f:
         json.dump({"roles": final_rows}, f, ensure_ascii=False, indent=2)
+
+
+def _default_presentation_board_state():
+    return {
+        "sourceType": "none",  # none | link | file
+        "sourceUrl": "",
+        "sourceTitle": "",
+        "sourceBlockedHint": "",
+        "fileName": "",
+        "fileUrl": "",
+        "fileMime": "",
+        "currentPage": 1,
+        "totalPages": 1,
+        "presenterRoleId": "",
+        "presenterNote": "",
+        "updated_at": datetime.now().isoformat(),
+    }
+
+
+def load_presentation_board_state():
+    state = _default_presentation_board_state()
+    if not os.path.exists(PRESENTATION_BOARD_FILE):
+        return state
+    try:
+        with open(PRESENTATION_BOARD_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            state.update({k: data.get(k, v) for k, v in state.items()})
+    except Exception:
+        pass
+    state["sourceType"] = str(state.get("sourceType") or "none").strip().lower()
+    if state["sourceType"] not in {"none", "link", "file"}:
+        state["sourceType"] = "none"
+    rid = str(state.get("presenterRoleId") or "").strip().lower()
+    if rid not in {"", "pm", "builder", "reviewer"}:
+        rid = ""
+    state["presenterRoleId"] = rid
+    try:
+        state["currentPage"] = max(1, int(state.get("currentPage") or 1))
+    except Exception:
+        state["currentPage"] = 1
+    try:
+        state["totalPages"] = max(1, int(state.get("totalPages") or 1))
+    except Exception:
+        state["totalPages"] = 1
+    return state
+
+
+def save_presentation_board_state(patch: dict | None = None):
+    state = load_presentation_board_state()
+    patch = patch if isinstance(patch, dict) else {}
+    for key in list(state.keys()):
+        if key in patch:
+            state[key] = patch.get(key)
+    state["updated_at"] = datetime.now().isoformat()
+    state["sourceType"] = str(state.get("sourceType") or "none").strip().lower()
+    if state["sourceType"] not in {"none", "link", "file"}:
+        state["sourceType"] = "none"
+    rid = str(state.get("presenterRoleId") or "").strip().lower()
+    if rid not in {"", "pm", "builder", "reviewer"}:
+        rid = ""
+    state["presenterRoleId"] = rid
+    try:
+        state["currentPage"] = max(1, int(state.get("currentPage") or 1))
+    except Exception:
+        state["currentPage"] = 1
+    try:
+        state["totalPages"] = max(1, int(state.get("totalPages") or 1))
+    except Exception:
+        state["totalPages"] = 1
+    if state["currentPage"] > state["totalPages"]:
+        state["currentPage"] = state["totalPages"]
+    os.makedirs(os.path.dirname(PRESENTATION_BOARD_FILE), exist_ok=True)
+    with open(PRESENTATION_BOARD_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+    return state
 
 
 def load_asset_positions():
@@ -920,6 +1001,9 @@ if not os.path.exists(AGENTS_STATE_FILE):
     save_agents_state(DEFAULT_AGENTS)
 if not os.path.exists(TEAM_STATUS_FILE):
     save_team_status(_default_team_roles())
+os.makedirs(PRESENTATION_UPLOAD_DIR, exist_ok=True)
+if not os.path.exists(PRESENTATION_BOARD_FILE):
+    save_presentation_board_state(_default_presentation_board_state())
 if not os.path.exists(JOIN_KEYS_FILE):
     if os.path.exists(os.path.join(ROOT_DIR, "join-keys.sample.json")):
         try:
@@ -1377,6 +1461,105 @@ def one_click_summary():
         })
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/presentation-board", methods=["GET"])
+def get_presentation_board():
+    return jsonify({"ok": True, "state": load_presentation_board_state()})
+
+
+@app.route("/presentation-board", methods=["POST"])
+def set_presentation_board():
+    try:
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify({"ok": False, "msg": "invalid json"}), 400
+        patch = {}
+        allowed_keys = {
+            "sourceType", "sourceUrl", "sourceTitle", "sourceBlockedHint",
+            "fileName", "fileUrl", "fileMime", "currentPage", "totalPages",
+            "presenterRoleId", "presenterNote"
+        }
+        for k in allowed_keys:
+            if k in data:
+                patch[k] = data.get(k)
+        state = save_presentation_board_state(patch)
+        return jsonify({"ok": True, "state": state})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/presentation-board/upload", methods=["POST"])
+def upload_presentation_board_file():
+    try:
+        f = request.files.get("file")
+        if not f:
+            return jsonify({"ok": False, "msg": "missing file"}), 400
+        raw_name = str(f.filename or "").strip()
+        if not raw_name:
+            return jsonify({"ok": False, "msg": "empty filename"}), 400
+
+        filename = secure_filename(raw_name)
+        ext = Path(filename).suffix.lower()
+        if ext not in PRESENTATION_ALLOWED_EXTS:
+            return jsonify({"ok": False, "msg": "only .ppt/.pptx/.pdf supported"}), 400
+
+        # Validate upload size (MVP hard limit)
+        f.stream.seek(0, os.SEEK_END)
+        size = int(f.stream.tell() or 0)
+        f.stream.seek(0)
+        if size <= 0:
+            return jsonify({"ok": False, "msg": "empty file"}), 400
+        if size > PRESENTATION_MAX_UPLOAD_BYTES:
+            return jsonify({"ok": False, "msg": f"file too large (> {PRESENTATION_MAX_UPLOAD_BYTES} bytes)"}), 400
+
+        os.makedirs(PRESENTATION_UPLOAD_DIR, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        save_name = f"{ts}-{filename}"
+        save_path = os.path.join(PRESENTATION_UPLOAD_DIR, save_name)
+        f.save(save_path)
+
+        file_url = f"/presentation-board/files/{save_name}"
+        mime = {
+            ".ppt": "application/vnd.ms-powerpoint",
+            ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ".pdf": "application/pdf",
+        }.get(ext, "application/octet-stream")
+
+        state = save_presentation_board_state({
+            "sourceType": "file",
+            "sourceUrl": "",
+            "sourceTitle": filename,
+            "sourceBlockedHint": "",
+            "fileName": filename,
+            "fileUrl": file_url,
+            "fileMime": mime,
+            "currentPage": 1,
+            "totalPages": 1,
+        })
+        return jsonify({
+            "ok": True,
+            "state": state,
+            "file": {
+                "name": filename,
+                "url": file_url,
+                "size": size,
+                "mime": mime,
+            }
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/presentation-board/files/<path:name>", methods=["GET"])
+def get_presentation_board_file(name):
+    safe_name = secure_filename(name)
+    if not safe_name:
+        return jsonify({"ok": False, "msg": "invalid filename"}), 400
+    path = os.path.join(PRESENTATION_UPLOAD_DIR, safe_name)
+    if not os.path.exists(path):
+        return jsonify({"ok": False, "msg": "not found"}), 404
+    return send_from_directory(PRESENTATION_UPLOAD_DIR, safe_name, as_attachment=False)
 
 
 @app.route("/agent-push", methods=["POST"])
