@@ -39,6 +39,14 @@ cd backend && python3 app.py
 - 拖动角色卡片或像素人到游戏内“电脑前热区”可触发“一键总结”。
 - 壁炉上方看板可加载链接，或上传 `PPT/PPTX/PDF` 进行共享展示。
 
+### 项目追踪文档（统一在本仓库）
+
+- 进度时间线：`docs/progress.md`
+- 需求清单：`docs/requirements.md`
+- 任务快照：`docs/tasks.md`
+- 验收记录：`docs/acceptance.md`
+- 决策记录：`docs/decisions.md`
+
 > 本项目由 **[Ring Hyacinth](https://x.com/ring_hyacinth)** 与 **[Simon Lee](https://x.com/simonxxoo)** 共同创建（co-created project），并与社区开发者（[@Zhaohan-Wang](https://github.com/Zhaohan-Wang)、[@Jah-yee](https://github.com/Jah-yee)、[@liaoandi](https://github.com/liaoandi)）一起持续维护和共建。
 > 欢迎提交 Issue 和 PR，也感谢每一位贡献者的支持。
 
