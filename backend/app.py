@@ -779,8 +779,41 @@ def _auto_crop_to_skin_grid(img, warnings, info):
         return img, [f"image ratio is too far from expected {ROLE_SKIN_GRID_COLS}:{ROLE_SKIN_GRID_ROWS}"]
 
     if crop_x > 0 or crop_y > 0:
-        left = max(0, (src_w - target_w) // 2)
-        top = max(0, (src_h - target_h) // 2)
+        # Prefer a crop window whose border is closest to magenta background.
+        # This keeps frame-grid alignment stable for real sprite sheets that
+        # often have padding on the right/bottom only.
+        candidates = {
+            (0, 0),
+            (max(0, crop_x // 2), max(0, crop_y // 2)),
+            (max(0, crop_x), 0),
+            (0, max(0, crop_y)),
+            (max(0, crop_x), max(0, crop_y)),
+        }
+
+        def border_magenta_ratio(left, top):
+            box = img.crop((left, top, left + target_w, top + target_h))
+            px = box.load()
+            pts = _iter_border_points(target_w, target_h)
+            if not pts:
+                return 0.0
+            hit = 0
+            for x, y in pts:
+                if _is_near_magenta(*px[x, y]):
+                    hit += 1
+            return float(hit) / float(len(pts))
+
+        best_left, best_top = 0, 0
+        best_score = -1.0
+        for left, top in candidates:
+            left = max(0, min(int(left), crop_x))
+            top = max(0, min(int(top), crop_y))
+            score = border_magenta_ratio(left, top)
+            # Tie-break: prefer smaller offsets (closer to top-left origin).
+            if score > best_score or (score == best_score and (left + top) < (best_left + best_top)):
+                best_left, best_top = left, top
+                best_score = score
+
+        left, top = best_left, best_top
         img = img.crop((left, top, left + target_w, top + target_h))
         warnings.append(
             f"auto-cropped sprite sheet to {target_w}x{target_h} ({ROLE_SKIN_GRID_COLS}x{ROLE_SKIN_GRID_ROWS} square frames)"
@@ -791,6 +824,7 @@ def _auto_crop_to_skin_grid(img, warnings, info):
             "rightTrim": int(src_w - (left + target_w)),
             "bottomTrim": int(src_h - (top + target_h)),
         }
+        info["autoCropBorderMagentaRatio"] = round(max(0.0, best_score), 4)
 
     return img, []
 
