@@ -337,6 +337,8 @@ DEFAULT_AGENTS = [
     }
 ]
 
+TEAM_ROLE_IDS = ("pm", "builder", "reviewer", "vbuilder")
+
 
 def _default_team_roles():
     now = datetime.now().isoformat()
@@ -363,6 +365,14 @@ def _default_team_roles():
             "role": "QA",
             "state": "researching",
             "note": "验证用例与回归风险",
+            "updated_at": now,
+        },
+        {
+            "roleId": "vbuilder",
+            "name": "vBuilder",
+            "role": "Remote Developer",
+            "state": "executing",
+            "note": "远端接力实现与排障",
             "updated_at": now,
         },
     ]
@@ -427,7 +437,7 @@ def save_team_status(roles):
         if not isinstance(row, dict):
             continue
         role_id = str(row.get("roleId") or "").strip().lower()
-        if role_id not in {"pm", "builder", "reviewer"}:
+        if role_id not in TEAM_ROLE_IDS:
             continue
         safe_roles.append({
             "roleId": role_id,
@@ -620,7 +630,7 @@ def _role_skin_builtin_row(role_id, skin_key, updated_at=None):
     ts = str(updated_at or "").strip() or datetime.now().isoformat()
     safe_skin = str(skin_key or "").strip()
     if not _is_builtin_role_skin_key(safe_skin):
-        safe_skin = (_default_role_skins()[0]["skin"] if role_id not in {"pm", "builder", "reviewer"}
+        safe_skin = (_default_role_skins()[0]["skin"] if role_id not in TEAM_ROLE_IDS
                      else next((x["skin"] for x in _default_role_skins() if x["roleId"] == role_id), "guest_anim_1"))
     return {
         "roleId": role_id,
@@ -713,7 +723,7 @@ def save_role_skins(rows):
         safe_builtin = skin_key if _is_builtin_role_skin_key(skin_key) else fallback["skin"]
         merged[rid] = _role_skin_builtin_row(rid, safe_builtin, updated_at=updated_at)
 
-    final_rows = [merged.get(rid, defaults[rid]) for rid in ("pm", "builder", "reviewer")]
+    final_rows = [merged.get(rid, defaults[rid]) for rid in defaults.keys()]
     with open(ROLE_SKINS_FILE, "w", encoding="utf-8") as f:
         json.dump({"roles": final_rows}, f, ensure_ascii=False, indent=2)
     return final_rows
@@ -897,6 +907,33 @@ def _edge_connected_magenta_cleanup(img, warnings, info):
                 approx_bg_count += 1
             pixels[x, y] = (255, 0, 255, 0)
 
+    # Clean thin near-magenta edge fringes that remain after background flood-fill.
+    # This targets anti-aliased halos connected to newly transparent background.
+    fringe_count = 0
+    for y in range(h):
+        for x in range(w):
+            i = idx(x, y)
+            if bg_mask[i]:
+                continue
+            r, g, b, a = pixels[x, y]
+            if a <= 12 or not _is_near_magenta(r, g, b, a):
+                continue
+
+            touches_bg = False
+            for ny in range(max(0, y - 1), min(h, y + 2)):
+                for nx in range(max(0, x - 1), min(w, x + 2)):
+                    if nx == x and ny == y:
+                        continue
+                    ni = idx(nx, ny)
+                    if bg_mask[ni] or pixels[nx, ny][3] <= 12:
+                        touches_bg = True
+                        break
+                if touches_bg:
+                    break
+            if touches_bg:
+                pixels[x, y] = (r, g, b, 0)
+                fringe_count += 1
+
     bg_ratio = bg_count / float(total)
     info["edgeConnectedMagentaRatio"] = round(bg_ratio, 4)
     info["edgeConnectedMagentaPixels"] = int(bg_count)
@@ -910,6 +947,9 @@ def _edge_connected_magenta_cleanup(img, warnings, info):
     if approx_bg_count > 0:
         warnings.append("normalized near-magenta background to transparent")
         info["normalizedNearMagentaPixels"] = int(approx_bg_count)
+    if fringe_count > 0:
+        warnings.append("cleaned near-magenta edge fringe for smoother silhouette")
+        info["edgeFringeCleanedPixels"] = int(fringe_count)
 
     return errors, bg_count
 
@@ -1949,7 +1989,7 @@ def set_team_status():
         if isinstance(data.get("roles"), list):
             merged = []
             incoming = {str((r or {}).get("roleId") or "").strip().lower(): r for r in data.get("roles", []) if isinstance(r, dict)}
-            for rid in ("pm", "builder", "reviewer"):
+            for rid in TEAM_ROLE_IDS:
                 current = dict(by_id.get(rid) or {})
                 patch = incoming.get(rid) or {}
                 current["roleId"] = rid
@@ -1967,8 +2007,8 @@ def set_team_status():
 
         # Single role update
         role_id = str(data.get("roleId") or "").strip().lower()
-        if role_id not in {"pm", "builder", "reviewer"}:
-            return jsonify({"ok": False, "msg": "roleId must be pm/builder/reviewer"}), 400
+        if role_id not in TEAM_ROLE_IDS:
+            return jsonify({"ok": False, "msg": "roleId must be pm/builder/reviewer/vbuilder"}), 400
 
         target = dict(by_id.get(role_id) or {"roleId": role_id})
         target["name"] = str(data.get("name") or target.get("name") or role_id.title()).strip() or role_id.title()
@@ -1981,7 +2021,7 @@ def set_team_status():
         target["updated_at"] = datetime.now().isoformat()
         by_id[role_id] = target
 
-        save_team_status([by_id.get("pm"), by_id.get("builder"), by_id.get("reviewer")])
+        save_team_status([by_id.get(rid) for rid in TEAM_ROLE_IDS])
         return jsonify({"ok": True, "role": target, "roles": load_team_status()})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
@@ -2026,7 +2066,7 @@ def one_click_summary():
         role_map = {str(r.get("roleId") or "").strip().lower(): r for r in roles if isinstance(r, dict)}
         mode = "rule-based-v1"
 
-        if trigger_role_id in {"pm", "builder", "reviewer"}:
+        if trigger_role_id in TEAM_ROLE_IDS:
             mode = "role-daily-v1"
             role = role_map.get(trigger_role_id) or {}
             role_name = str(role.get("name") or trigger_role_id.upper()).strip() or trigger_role_id.upper()

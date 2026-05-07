@@ -2563,7 +2563,8 @@
         const ROLE_SKIN_DEFAULTS = {
             pm: 'guest_anim_1',
             builder: 'guest_anim_2',
-            reviewer: 'guest_anim_3'
+            reviewer: 'guest_anim_3',
+            vbuilder: 'guest_anim_4'
         };
         const ROLE_SKIN_BUILTIN_OPTIONS = [
             'guest_anim_1', 'guest_anim_2', 'guest_anim_3', 'guest_anim_4', 'guest_anim_5', 'guest_anim_6',
@@ -2590,7 +2591,8 @@
         const TEAM_ROLE_DEFAULTS = [
             { roleId: 'pm', name: 'PM', role: 'Product / Project Manager', state: 'syncing', note: '拆分任务与验收口径', updated_at: new Date().toISOString() },
             { roleId: 'builder', name: 'Builder', role: 'Developer', state: 'executing', note: '实现功能与联调', updated_at: new Date().toISOString() },
-            { roleId: 'reviewer', name: 'Reviewer', role: 'QA', state: 'researching', note: '验证用例与回归风险', updated_at: new Date().toISOString() }
+            { roleId: 'reviewer', name: 'Reviewer', role: 'QA', state: 'researching', note: '验证用例与回归风险', updated_at: new Date().toISOString() },
+            { roleId: 'vbuilder', name: 'vBuilder', role: 'Remote Developer', state: 'executing', note: '远端接力实现与排障', updated_at: new Date().toISOString() }
         ];
         let draggingRoleId = null;
         let dragDropTriggered = false;
@@ -4340,7 +4342,7 @@ function toggleBrokerPanel() {
         }
 
         function normalizeRoleSkins(input) {
-            const defaults = ['pm', 'builder', 'reviewer'].map((rid) => ({
+            const defaults = ['pm', 'builder', 'reviewer', 'vbuilder'].map((rid) => ({
                 roleId: rid,
                 skin: ROLE_SKIN_DEFAULTS[rid],
                 avatar: ROLE_SKIN_DEFAULTS[rid],
@@ -4534,6 +4536,13 @@ function toggleBrokerPanel() {
         function roleSkinDisplayScale(row) {
             const frameHeight = Math.max(1, parseInt(row && row.frameHeight, 10) || 32);
             return Math.max(0.45, Math.min(4.0, 128 / frameHeight));
+        }
+
+        function roleSkinAnchorOffsetY(row) {
+            if (!row || String(row.sourceType || '').trim().toLowerCase() !== 'uploaded') return 0;
+            const frameHeight = Math.max(1, parseInt(row.frameHeight, 10) || 32);
+            // Lift uploaded sprites slightly so foot contact stays above floor occlusion.
+            return -Math.max(2, Math.min(12, Math.round(frameHeight * 0.12)));
         }
 
         function resetTeamRoleSprites() {
@@ -4927,7 +4936,8 @@ function toggleBrokerPanel() {
             const tagMap = {
                 pm: 'PM',
                 builder: 'DEV',
-                reviewer: 'QA'
+                reviewer: 'QA',
+                vbuilder: 'R-DEV'
             };
             return tagMap[String(roleId || '').toLowerCase()] || 'AGENT';
         }
@@ -6044,6 +6054,10 @@ function toggleBrokerPanel() {
                     const pin = teamRolePinnedPositions[id];
                     p = { x: pin.x, y: pin.y };
                 }
+                const roleSkinRow = agent.isTeamRole
+                    ? (roleSkinRowsByRole[String(agent.roleId || '').trim().toLowerCase()] || null)
+                    : null;
+                const roleSkinYOffset = agent.isTeamRole ? roleSkinAnchorOffsetY(roleSkinRow) : 0;
                 const nameOffset = isDemo ? 80 : (agent.isPresenter ? 98 : 120);
 
                 if (!guestSprites[id]) {
@@ -6061,7 +6075,7 @@ function toggleBrokerPanel() {
                     } else if (agent.isTeamRole) {
                         const renderSkin = resolveTeamRoleRender(agent);
                         const textureKey = renderSkin.textureKey;
-                        sprite = game.add.sprite(p.x, p.y, textureKey).setOrigin(0.5, 1).setScale(renderSkin.scale);
+                        sprite = game.add.sprite(p.x, p.y + roleSkinYOffset, textureKey).setOrigin(0.5, 1).setScale(renderSkin.scale);
                         if (renderSkin.playAnimKey && sprite.anims && sprite.anims.play && game.anims.exists(renderSkin.playAnimKey)) {
                             sprite.anims.play(renderSkin.playAnimKey, true);
                         }
@@ -6108,7 +6122,7 @@ function toggleBrokerPanel() {
                     // demo 水星下移 10px（仅 demo_mercury）
                     const yOffset = (DEMO_MODE && (agent.agentId === 'demo_mercury' || agent.name === '水星')) ? 10 : 0;
 
-                    const nameTextY = (p.y + yOffset) - nameOffset;
+                    const nameTextY = (p.y + yOffset + roleSkinYOffset) - nameOffset;
                     const nameText = game.add.text(p.x, nameTextY, getSceneActorNameText(agent), {
                         fontFamily: 'ArkPixel, monospace',
                         fontSize: isDemo ? '16px' : '15px',
@@ -6154,23 +6168,23 @@ function toggleBrokerPanel() {
                         const moveTween = game.tweens.add({
                             targets: g.sprite,
                             x: p.x,
-                            y: p.y + yOffset,
+                            y: p.y + yOffset + roleSkinYOffset,
                             duration,
                             ease
                         });
                         const nameTween = game.tweens.add({
                             targets: g.nameText,
                             x: p.x,
-                            y: (p.y + yOffset) - 80,
+                            y: (p.y + yOffset + roleSkinYOffset) - 80,
                             duration,
                             ease
                         });
                         guestTweens[id] = { move: moveTween, name: nameTween };
                     } else {
                         g.sprite.x = p.x;
-                        g.sprite.y = p.y + yOffset;
+                        g.sprite.y = p.y + yOffset + roleSkinYOffset;
                         g.nameText.x = p.x;
-                        g.nameText.y = (p.y + yOffset) - nameOffset;
+                        g.nameText.y = (p.y + yOffset + roleSkinYOffset) - nameOffset;
                     }
 
                     g.isTeamRole = !!agent.isTeamRole;
