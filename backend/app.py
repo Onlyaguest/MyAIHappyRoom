@@ -499,6 +499,19 @@ def _default_role_skins():
             "validation": {"errors": [], "warnings": []},
             "updated_at": now,
         },
+        {
+            "roleId": "vbuilder",
+            "skin": "guest_anim_4",
+            "avatar": "guest_anim_4",
+            "animKey": "guest_anim_4",
+            "sourceType": "builtin",
+            "skinId": "",
+            "sheetUrl": "",
+            "frameWidth": 32,
+            "frameHeight": 32,
+            "validation": {"errors": [], "warnings": []},
+            "updated_at": now,
+        },
     ]
 
 
@@ -2205,17 +2218,27 @@ def set_role_skins():
                 if not isinstance(row, dict):
                     continue
                 rid = str(row.get("roleId") or "").strip().lower()
-                if rid not in {"pm", "builder", "reviewer"}:
+                if rid not in {"pm", "builder", "reviewer", "vbuilder"}:
                     continue
                 current[rid] = _build_role_skin_row(rid, row, current[rid], library_by_id)
-            saved = save_role_skins([current.get("pm"), current.get("builder"), current.get("reviewer")])
+            saved = save_role_skins([
+                current.get("pm"),
+                current.get("builder"),
+                current.get("reviewer"),
+                current.get("vbuilder"),
+            ])
             return jsonify({"ok": True, "roles": saved, "library": library})
 
         rid = str(data.get("roleId") or "").strip().lower()
-        if rid not in {"pm", "builder", "reviewer"}:
-            return jsonify({"ok": False, "msg": "roleId must be pm/builder/reviewer"}), 400
+        if rid not in {"pm", "builder", "reviewer", "vbuilder"}:
+            return jsonify({"ok": False, "msg": "roleId must be pm/builder/reviewer/vbuilder"}), 400
         current[rid] = _build_role_skin_row(rid, data, current[rid], library_by_id)
-        saved = save_role_skins([current.get("pm"), current.get("builder"), current.get("reviewer")])
+        saved = save_role_skins([
+            current.get("pm"),
+            current.get("builder"),
+            current.get("reviewer"),
+            current.get("vbuilder"),
+        ])
         return jsonify({"ok": True, "role": current[rid], "roles": saved, "library": library})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
@@ -2232,8 +2255,8 @@ def upload_role_skin():
 
         role_id = str(request.form.get("roleId") or "").strip().lower()
         apply_to_role = str(request.form.get("apply") or "0").strip().lower() in {"1", "true", "yes", "on"}
-        if apply_to_role and role_id not in {"pm", "builder", "reviewer"}:
-            return jsonify({"ok": False, "msg": "roleId must be pm/builder/reviewer when apply=true"}), 400
+        if apply_to_role and role_id not in {"pm", "builder", "reviewer", "vbuilder"}:
+            return jsonify({"ok": False, "msg": "roleId must be pm/builder/reviewer/vbuilder when apply=true"}), 400
 
         raw_name = str(f.filename or "").strip()
         if not raw_name:
@@ -2300,10 +2323,15 @@ def upload_role_skin():
 
         saved_roles = load_role_skins()
         role_row = None
-        if apply_to_role and role_id in {"pm", "builder", "reviewer"}:
+        if apply_to_role and role_id in {"pm", "builder", "reviewer", "vbuilder"}:
             current = {r.get("roleId"): r for r in saved_roles}
             current[role_id] = _role_skin_uploaded_row(role_id, item, updated_at=datetime.now().isoformat())
-            saved_roles = save_role_skins([current.get("pm"), current.get("builder"), current.get("reviewer")])
+            saved_roles = save_role_skins([
+                current.get("pm"),
+                current.get("builder"),
+                current.get("reviewer"),
+                current.get("vbuilder"),
+            ])
             role_row = next((r for r in saved_roles if r.get("roleId") == role_id), None)
 
         return jsonify({
