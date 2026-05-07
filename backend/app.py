@@ -2076,6 +2076,11 @@ def one_click_summary():
             "error": "异常中",
         }
         trigger_role_id = str(data.get("triggerRoleId") or "").strip().lower()
+        try:
+            window_hours = int(data.get("windowHours") or 24)
+        except Exception:
+            window_hours = 24
+        window_hours = max(1, min(168, window_hours))
         role_map = {str(r.get("roleId") or "").strip().lower(): r for r in roles if isinstance(r, dict)}
         mode = "rule-based-v1"
 
@@ -2086,13 +2091,14 @@ def one_click_summary():
             role_state = normalize_agent_state(role.get("state"))
             role_state_text = state_cn.get(role_state, "待命")
             role_note = sanitize_content(str(role.get("note") or "").strip())
-            title = f"【{role_name} 今日工作总结】"
+            title = f"【{role_name} 过去{window_hours}小时工作总结】"
             lines = [title]
 
             payload = load_one_click_summaries()
             all_items = payload.get("items") if isinstance(payload.get("items"), list) else []
-            today = datetime.now().date()
-            today_role_items = []
+            now_dt = datetime.now()
+            cutoff = now_dt - timedelta(hours=window_hours)
+            recent_role_items = []
             for row in all_items:
                 if not isinstance(row, dict):
                     continue
@@ -2100,15 +2106,15 @@ def one_click_summary():
                 row_mode = str(row.get("mode") or "").strip().lower()
                 if row_role != trigger_role_id:
                     continue
-                if not row_mode.startswith("role-daily"):
+                if "role-daily" not in row_mode:
                     continue
                 ts = str(row.get("generated_at") or "").strip()
                 try:
                     row_dt = datetime.fromisoformat(ts)
                 except Exception:
                     continue
-                if row_dt.date() == today:
-                    today_role_items.append(row)
+                if row_dt >= cutoff:
+                    recent_role_items.append((row_dt, row))
 
             lines.append(f"当前状态：{role_state_text}")
             if role_note:
@@ -2123,8 +2129,26 @@ def one_click_summary():
             else:
                 lines.append("待办：继续推进，完成后可再次拖拽更新本角色总结。")
 
-            if today_role_items:
-                lines.append(f"今日累计记录：{len(today_role_items)} 条。")
+            if recent_role_items:
+                lines.append(f"过去 {window_hours} 小时累计记录：{len(recent_role_items)} 条。")
+                lines.append("最近日志：")
+                recent_role_items.sort(key=lambda x: x[0], reverse=True)
+                for row_dt, row in recent_role_items[:3]:
+                    row_summary = sanitize_content(str(row.get("summary") or "").strip())
+                    excerpt = ""
+                    for ln in row_summary.splitlines():
+                        ln = ln.strip()
+                        if not ln or ln.startswith("【"):
+                            continue
+                        excerpt = ln
+                        break
+                    if not excerpt:
+                        excerpt = "已记录一条总结"
+                    if len(excerpt) > 64:
+                        excerpt = excerpt[:64] + "..."
+                    lines.append(f"- {row_dt.strftime('%m-%d %H:%M')}：{excerpt}")
+            else:
+                lines.append(f"过去 {window_hours} 小时暂无历史日志，已根据当前状态生成。")
 
             summary = "\n".join(lines)
         else:

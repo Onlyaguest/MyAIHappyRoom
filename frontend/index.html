@@ -2606,6 +2606,11 @@
         const SCENE_COMPUTER_HIT_RADIUS = { x: 360, y: 300 };
         const SCENE_COMPUTER_DROP_MARGIN_HOT = 36;
         const SCENE_COMPUTER_DROP_MARGIN_HIT = 140;
+        const SCENE_BED_DROP_MARGIN_HOT = 24;
+        const SCENE_BED_DROP_MARGIN_HIT = 72;
+        const SCENE_SERVERROOM_DROP_MARGIN_HOT = 24;
+        const SCENE_SERVERROOM_DROP_MARGIN_HIT = 72;
+        const ROLE_HEAD_BUBBLE_DURATION_MS = 10000;
         const AREA_GRID_STEP_X = 22;
         const AREA_GRID_STEP_Y = 18;
         const TEAM_ROLE_DEFAULTS = [
@@ -5034,6 +5039,28 @@ function toggleBrokerPanel() {
             return overlap >= Math.max(260, spriteArea * 0.1);
         }
 
+        function getAreaRectWithMargin(area, margin = 0) {
+            const r = getAreaRect(area);
+            const m = Number(margin) || 0;
+            return {
+                x1: r.x1 - m,
+                y1: r.y1 - m,
+                x2: r.x2 + m,
+                y2: r.y2 + m,
+                width: Math.max(1, (r.x2 - r.x1) + m * 2),
+                height: Math.max(1, (r.y2 - r.y1) + m * 2)
+            };
+        }
+
+        function isSpriteOverAreaDropZone(area, gameObject, margin = 0) {
+            const bounds = getBoundsSafe(gameObject);
+            if (!bounds) return false;
+            const zone = getAreaRectWithMargin(area, margin);
+            const overlap = getRectOverlapArea(bounds, zone);
+            const spriteArea = Math.max(1, bounds.width * bounds.height);
+            return overlap >= Math.max(260, spriteArea * 0.1);
+        }
+
         function isComputerDropHot(pointerX, pointerY, gameObject) {
             return isInComputerDropZone(pointerX, pointerY, SCENE_COMPUTER_DROP_MARGIN_HOT)
                 || isSpriteOverComputerDropZone(gameObject, SCENE_COMPUTER_DROP_MARGIN_HOT);
@@ -5042,6 +5069,26 @@ function toggleBrokerPanel() {
         function isComputerDropHit(pointerX, pointerY, gameObject) {
             return isInComputerDropZone(pointerX, pointerY, SCENE_COMPUTER_DROP_MARGIN_HIT)
                 || isSpriteOverComputerDropZone(gameObject, SCENE_COMPUTER_DROP_MARGIN_HIT);
+        }
+
+        function isBedDropHot(pointerX, pointerY, gameObject) {
+            return isPointInArea('breakroom', pointerX, pointerY, SCENE_BED_DROP_MARGIN_HOT)
+                || isSpriteOverAreaDropZone('breakroom', gameObject, SCENE_BED_DROP_MARGIN_HOT);
+        }
+
+        function isBedDropHit(pointerX, pointerY, gameObject) {
+            return isPointInArea('breakroom', pointerX, pointerY, SCENE_BED_DROP_MARGIN_HIT)
+                || isSpriteOverAreaDropZone('breakroom', gameObject, SCENE_BED_DROP_MARGIN_HIT);
+        }
+
+        function isServerRoomDropHot(pointerX, pointerY, gameObject) {
+            return isPointInArea('error', pointerX, pointerY, SCENE_SERVERROOM_DROP_MARGIN_HOT)
+                || isSpriteOverAreaDropZone('error', gameObject, SCENE_SERVERROOM_DROP_MARGIN_HOT);
+        }
+
+        function isServerRoomDropHit(pointerX, pointerY, gameObject) {
+            return isPointInArea('error', pointerX, pointerY, SCENE_SERVERROOM_DROP_MARGIN_HIT)
+                || isSpriteOverAreaDropZone('error', gameObject, SCENE_SERVERROOM_DROP_MARGIN_HIT);
         }
 
         function prependSummaryToMemo(summaryText, triggerName, summaryTitle = '') {
@@ -5157,7 +5204,7 @@ function toggleBrokerPanel() {
             contentEl.textContent = text || '暂未生成总结。';
         }
 
-        function showSummaryBubble(text) {
+        function showSummaryBubble(text, durationMs = 2200) {
             const bubbleEl = document.getElementById('summary-bubble');
             if (!bubbleEl) return;
             bubbleEl.textContent = text || '';
@@ -5165,7 +5212,39 @@ function toggleBrokerPanel() {
             clearTimeout(showSummaryBubble._timer);
             showSummaryBubble._timer = setTimeout(() => {
                 bubbleEl.classList.remove('show');
-            }, 2200);
+            }, Math.max(1200, Number(durationMs) || 2200));
+        }
+
+        function showTeamRoleHeadBubble(roleId, text, durationMs = ROLE_HEAD_BUBBLE_DURATION_MS) {
+            const rid = String(roleId || '').trim().toLowerCase();
+            if (!rid || !game) return;
+            const agentId = `team_role_${rid}`;
+            const g = guestSprites[agentId];
+            if (!g || !g.sprite) return;
+            if (guestBubbles[agentId]) {
+                try { guestBubbles[agentId].destroy(); } catch (e) {}
+                delete guestBubbles[agentId];
+            }
+            const bubbleText = String(text || '').trim();
+            if (!bubbleText) return;
+            const bx = g.sprite.x;
+            const nameH = (g.nameText && g.nameText.height) ? g.nameText.height : 16;
+            const by = (g.nameText ? g.nameText.y : (g.sprite.y - 150)) - (nameH / 2) - 22;
+            const fontSize = IS_TOUCH_DEVICE ? 14 : 12;
+            const bg = game.add.rectangle(bx, by, bubbleText.length * 10 + 24, 28, 0xffffff, 0.95);
+            bg.setStrokeStyle(2, 0x000000);
+            const txt = game.add.text(bx, by, bubbleText, { fontFamily: 'ArkPixel, monospace', fontSize: fontSize + 'px', fill: '#000' }).setOrigin(0.5);
+            const bubble = game.add.container(0, 0, [bg, txt]);
+            bubble.setDepth(2705);
+            bubble.__followAgentId = agentId;
+            guestBubbles[agentId] = bubble;
+
+            setTimeout(() => {
+                if (guestBubbles[agentId] === bubble) {
+                    guestBubbles[agentId].destroy();
+                    delete guestBubbles[agentId];
+                }
+            }, Math.max(1200, Number(durationMs) || ROLE_HEAD_BUBBLE_DURATION_MS));
         }
 
         function setSummaryDropzoneVisible(active, opts = {}) {
@@ -5328,7 +5407,7 @@ function toggleBrokerPanel() {
             const rid = String(triggerRoleId || '').trim().toLowerCase();
             const fallback = rid ? rid.toUpperCase() : '角色';
             const name = String(triggerName || '').trim() || fallback;
-            return `【${name} 今日工作总结】`;
+            return `【${name} 过去24小时工作总结】`;
         }
 
         function buildRoleOnlyFallbackSummaryText(roles, triggerRoleId) {
@@ -5357,19 +5436,22 @@ function toggleBrokerPanel() {
             return lines.join('\n');
         }
 
-        async function triggerOneClickSummary(triggerRoleId) {
+        async function triggerOneClickSummary(triggerRoleId, opts = {}) {
             const rid = String(triggerRoleId || '').trim().toLowerCase();
             if (!rid) {
                 setSummaryStatusHint('未识别到角色，请重新拖拽到电脑前', 'warn');
                 setSummaryRetryButton(false);
                 return;
             }
+            const options = (opts && typeof opts === 'object') ? opts : {};
+            const windowHours = Math.max(1, Math.min(168, Number(options.windowHours) || 24));
+            const bubbleDurationMs = Math.max(1200, Number(options.bubbleDurationMs) || ROLE_HEAD_BUBBLE_DURATION_MS);
             lastSummaryTriggerRoleId = rid;
             const roles = normalizeTeamRoles(teamRoles);
             const triggerRole = roles.find(r => r.roleId === rid);
             summaryRetryInFlight = true;
             setSummaryRetryButton(false);
-            setSummaryStatusHint('正在总结（连接远端服务）...', 'info');
+            setSummaryStatusHint(`正在总结过去 ${windowHours} 小时工作日志（连接远端服务）...`, 'info');
 
             let summaryText = '';
             let summaryMode = 'role-daily-v1';
@@ -5379,7 +5461,7 @@ function toggleBrokerPanel() {
                 const res = await fetch('/one-click-summary', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ roles, triggerRoleId: rid, persist: false })
+                    body: JSON.stringify({ roles, triggerRoleId: rid, persist: false, windowHours })
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || !data.ok || !data.summary) {
@@ -5407,11 +5489,13 @@ function toggleBrokerPanel() {
             if (usedFallback) {
                 setSummaryStatusHint(`连接失败，已显示兜底总结（${triggerName}）。请点“重试”`, 'warn');
                 setSummaryRetryButton(true);
-                showSummaryBubble(`${triggerName} 总结请求失败，可重试`);
+                showSummaryBubble(`${triggerName} 总结请求失败，可重试`, bubbleDurationMs);
+                showTeamRoleHeadBubble(rid, '连接失败，可重试', bubbleDurationMs);
             } else {
                 setSummaryStatusHint(`${triggerName} 于 ${nowText} 总结成功`, 'ok');
                 setSummaryRetryButton(false);
-                showSummaryBubble(`${triggerName} 今日工作总结已生成`);
+                showSummaryBubble(`${triggerName} 过去 ${windowHours} 小时总结已生成`, bubbleDurationMs);
+                showTeamRoleHeadBubble(rid, '24h总结已生成', bubbleDurationMs);
             }
 
             // 强一致：同一个函数同时写 Summary + Yesterday Notes 本地 DOM。
@@ -5444,7 +5528,85 @@ function toggleBrokerPanel() {
                 return;
             }
             setSummaryRetryButton(true, { loading: true });
-            await triggerOneClickSummary(lastSummaryTriggerRoleId);
+            await triggerOneClickSummary(lastSummaryTriggerRoleId, { windowHours: 24, bubbleDurationMs: ROLE_HEAD_BUBBLE_DURATION_MS });
+        }
+
+        async function triggerBedInterrupt(roleId) {
+            const rid = String(roleId || '').trim().toLowerCase();
+            if (!rid) return;
+            const roles = normalizeTeamRoles(teamRoles);
+            const role = roles.find(r => r.roleId === rid);
+            const roleName = (role && role.name) || rid.toUpperCase();
+            const nowLabel = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            const waitingNote = `已停止当前工作，等待最新输入（${nowLabel}）`;
+            await applyTeamRolePatch(rid, { state: 'idle', note: waitingNote });
+            const msg = `【${roleName} 床位中断】已停止当前工作，进入等待新输入状态。`;
+            setSummaryStatusHint(`${roleName} 已进入等待输入状态`, 'ok');
+            setSummaryContent(msg);
+            showSummaryBubble(`${roleName} 已停止当前工作`, ROLE_HEAD_BUBBLE_DURATION_MS);
+            showTeamRoleHeadBubble(rid, '已停下，等待新输入', ROLE_HEAD_BUBBLE_DURATION_MS);
+            prependSummaryToMemo(msg, roleName, `【${roleName} 床位中断】`);
+            flashLatestSummaryInMemo();
+            try {
+                await fetch('/one-click-summary/record', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        summary: msg,
+                        triggerRoleId: rid,
+                        roles: normalizeTeamRoles(teamRoles),
+                        mode: 'bed-interrupt-v1'
+                    })
+                });
+            } catch (e) {
+                console.warn('record bed interrupt failed:', e);
+            }
+        }
+
+        async function triggerServerRoomSelfCheck(roleId) {
+            const rid = String(roleId || '').trim().toLowerCase();
+            if (!rid) return;
+            const roles = normalizeTeamRoles(teamRoles);
+            const role = roles.find(r => r.roleId === rid);
+            const roleName = (role && role.name) || rid.toUpperCase();
+            const nudged = getNudgeOwners(rid);
+            const nowLabel = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            const reflectState = role && role.state === 'error' ? 'error' : 'researching';
+            const note = nudged.length > 0
+                ? `机房自检：${nowLabel} 发现阻塞，准备催办 ${nudged.join('、')}`
+                : `机房自检：${nowLabel} 暂无重大阻塞，继续执行`;
+            await applyTeamRolePatch(rid, { state: reflectState, note });
+
+            const lines = [
+                `【${roleName} 机房自检】`,
+                nudged.length > 0
+                    ? `发现阻塞：已识别 ${nudged.length} 个待催角色。`
+                    : '未发现明显阻塞：继续推进当前工作。'
+            ];
+            if (nudged.length > 0) {
+                lines.push(`催办对象：${nudged.join('、')}`);
+            }
+            const summary = lines.join('\n');
+            setSummaryStatusHint(`${roleName} 已完成机房自检`, nudged.length > 0 ? 'warn' : 'ok');
+            setSummaryContent(summary);
+            showSummaryBubble(`${roleName} 已完成机房自检`, ROLE_HEAD_BUBBLE_DURATION_MS);
+            showTeamRoleHeadBubble(rid, nudged.length > 0 ? `发现阻塞，催 ${nudged.length} 位` : '未发现重大阻塞', ROLE_HEAD_BUBBLE_DURATION_MS);
+            prependSummaryToMemo(summary, roleName, `【${roleName} 机房自检】`);
+            flashLatestSummaryInMemo();
+            try {
+                await fetch('/one-click-summary/record', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        summary,
+                        triggerRoleId: rid,
+                        roles: normalizeTeamRoles(teamRoles),
+                        mode: 'server-room-self-check-v1'
+                    })
+                });
+            } catch (e) {
+                console.warn('record server-room self-check failed:', e);
+            }
         }
 
         function bindSummaryDropzone() {
@@ -5470,7 +5632,7 @@ function toggleBrokerPanel() {
                 const roleId = (ev.dataTransfer && ev.dataTransfer.getData('text/plain')) || draggingRoleId || '';
                 setSummaryDropzoneHot(false);
                 setSummaryDropzoneVisible(false);
-                await triggerOneClickSummary(roleId);
+                await triggerOneClickSummary(roleId, { windowHours: 24, bubbleDurationMs: ROLE_HEAD_BUBBLE_DURATION_MS });
             });
         }
 
@@ -7130,7 +7292,7 @@ function toggleBrokerPanel() {
                 draggingRoleId = gameObject.__teamRoleId;
                 dragDropTriggered = false;
                 setSummaryDropzoneVisible(true, { acceptCardDrop: false });
-                setSummaryStatusHint('拖动像素人到电脑屏幕/桌面高亮区域即可触发总结', 'info');
+                setSummaryStatusHint('拖动像素人到电脑/床/机房区域触发对应动作', 'info');
                 gameObject.setDepth(3001);
                 const rec = guestSprites[gameObject.__teamAgentId];
                 if (rec && rec.nameText) rec.nameText.setDepth(3002);
@@ -7159,7 +7321,9 @@ function toggleBrokerPanel() {
                     rec.nameText.x = dragX;
                     rec.nameText.y = dragY - 120;
                 }
-                const hot = isComputerDropHot(lastPointerWorld.x, lastPointerWorld.y, gameObject);
+                const hot = isComputerDropHot(lastPointerWorld.x, lastPointerWorld.y, gameObject)
+                    || isBedDropHot(lastPointerWorld.x, lastPointerWorld.y, gameObject)
+                    || isServerRoomDropHot(lastPointerWorld.x, lastPointerWorld.y, gameObject);
                 setSummaryDropzoneHot(hot);
             });
 
@@ -7169,7 +7333,9 @@ function toggleBrokerPanel() {
                 const agentId = gameObject.__teamAgentId;
                 const px = Number.isFinite(pointer.worldX) ? pointer.worldX : lastPointerWorld.x;
                 const py = Number.isFinite(pointer.worldY) ? pointer.worldY : lastPointerWorld.y;
-                const hit = isComputerDropHit(px, py, gameObject);
+                const hitComputer = isComputerDropHit(px, py, gameObject);
+                const hitBed = isBedDropHit(px, py, gameObject);
+                const hitServerRoom = isServerRoomDropHit(px, py, gameObject);
                 if (agentId) {
                     teamRolePinnedPositions[agentId] = { x: gameObject.x, y: gameObject.y, updatedAt: Date.now() };
                 }
@@ -7178,15 +7344,27 @@ function toggleBrokerPanel() {
                 setSummaryDropzoneVisible(false, { acceptCardDrop: false });
                 // 先回归角色位置，避免“卡在电脑前”的视觉卡顿。
                 renderGuestAgentsInScene();
-                if (hit) {
+                if (hitComputer) {
                     dragDropTriggered = true;
-                    triggerOneClickSummary(roleId).catch((e) => {
+                    triggerOneClickSummary(roleId, { windowHours: 24, bubbleDurationMs: ROLE_HEAD_BUBBLE_DURATION_MS }).catch((e) => {
                         console.error('triggerOneClickSummary failed:', e);
                         setSummaryStatusHint('触发失败，请重试（可拖到电脑屏幕/桌面高亮区域）', 'warn');
                     });
+                } else if (hitBed) {
+                    dragDropTriggered = true;
+                    triggerBedInterrupt(roleId).catch((e) => {
+                        console.error('triggerBedInterrupt failed:', e);
+                        setSummaryStatusHint('床位中断失败，请重试', 'warn');
+                    });
+                } else if (hitServerRoom) {
+                    dragDropTriggered = true;
+                    triggerServerRoomSelfCheck(roleId).catch((e) => {
+                        console.error('triggerServerRoomSelfCheck failed:', e);
+                        setSummaryStatusHint('机房自检失败，请重试', 'warn');
+                    });
                 } else {
-                    setSummaryStatusHint('未命中，请拖到电脑屏幕/桌面高亮区域', 'warn');
-                    showSummaryBubble('未命中，请拖到电脑屏幕/桌面高亮区域');
+                    setSummaryStatusHint('未命中，请拖到电脑/床/机房区域', 'warn');
+                    showSummaryBubble('未命中，请拖到电脑/床/机房区域');
                 }
                 draggingRoleId = null;
             });
