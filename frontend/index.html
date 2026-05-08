@@ -2619,6 +2619,8 @@
             { roleId: 'reviewer', name: 'Reviewer', role: 'QA', state: 'researching', note: '验证用例与回归风险', updated_at: new Date().toISOString() },
             { roleId: 'vbuilder', name: 'vBuilder', role: 'Remote Developer', state: 'executing', note: '远端接力实现与排障', updated_at: new Date().toISOString() }
         ];
+        const TEAM_ROLE_ID_SET = new Set(TEAM_ROLE_DEFAULTS.map((r) => r.roleId));
+        const LOCAL_ROLE_CONFIG_STORAGE_KEY = 'viviLocalRoleConfigV1';
         let draggingRoleId = null;
         let dragDropTriggered = false;
         let lastSummaryTriggerRoleId = '';
@@ -2626,6 +2628,7 @@
         let lastPointerWorld = { x: 0, y: 0 };
         let isDraggingTeamSprite = false;
         let teamRolePinnedPositions = {};
+        let localRoleConfigCache = null;
         const OWNER_CAT_STATES = ['idle', 'working', 'syncing', 'error'];
         const OWNER_CAT_STATE_LABEL = {
             idle: '待命',
@@ -2663,6 +2666,57 @@
         const BOARD_UI_STORAGE_KEY = 'fireplaceBoardUiV1';
         const boardUiState = { collapsed: false, helpOpen: false };
         let boardControlGuideTimer = null;
+
+        function sanitizeRoleToken(raw, fallback = '') {
+            const token = String(raw || '').trim().toLowerCase().replace(/[^a-z0-9_\-]/g, '');
+            return token || fallback;
+        }
+
+        function loadLocalRoleConfigFromQueryOrStorage() {
+            const params = new URLSearchParams(window.location.search || '');
+            const hasPatchParams = ['localRoleBind', 'localRoleName', 'localRoleId', 'localRoleNote', 'localRoleRole', 'localRole']
+                .some((k) => params.has(k));
+            const roleToggle = String(params.get('localRole') || '').trim().toLowerCase();
+            if (roleToggle === 'off' || roleToggle === '0' || roleToggle === 'false') {
+                try { localStorage.removeItem(LOCAL_ROLE_CONFIG_STORAGE_KEY); } catch (e) {}
+                return null;
+            }
+
+            let stored = null;
+            try {
+                stored = JSON.parse(localStorage.getItem(LOCAL_ROLE_CONFIG_STORAGE_KEY) || 'null');
+            } catch (e) {
+                stored = null;
+            }
+
+            if (hasPatchParams) {
+                const patch = {
+                    bindRoleId: sanitizeRoleToken(params.get('localRoleBind') || (stored && stored.bindRoleId) || 'builder', 'builder'),
+                    roleId: sanitizeRoleToken(params.get('localRoleId') || (stored && stored.roleId) || '', ''),
+                    name: String(params.get('localRoleName') || (stored && stored.name) || '').trim(),
+                    role: String(params.get('localRoleRole') || (stored && stored.role) || '').trim(),
+                    note: String(params.get('localRoleNote') || (stored && stored.note) || '').trim(),
+                };
+                try { localStorage.setItem(LOCAL_ROLE_CONFIG_STORAGE_KEY, JSON.stringify(patch)); } catch (e) {}
+                stored = patch;
+            }
+
+            if (!stored || typeof stored !== 'object') return null;
+            const bindRoleId = sanitizeRoleToken(stored.bindRoleId || 'builder', 'builder');
+            if (!TEAM_ROLE_ID_SET.has(bindRoleId)) return null;
+            const roleIdSeed = sanitizeRoleToken(stored.roleId || '', '');
+            const roleId = roleIdSeed ? `local_${roleIdSeed}` : `local_${bindRoleId}`;
+            const name = String(stored.name || '').trim() || `Local ${bindRoleId.toUpperCase()}`;
+            const role = String(stored.role || '').trim() || `Local Agent (bind ${bindRoleId.toUpperCase()})`;
+            const note = String(stored.note || '').trim() || `本机指定测试角色（绑定 ${bindRoleId.toUpperCase()}）`;
+            return { roleId, bindRoleId, name, role, note };
+        }
+
+        function getLocalConfiguredRoleConfig() {
+            if (localRoleConfigCache !== null) return localRoleConfigCache;
+            localRoleConfigCache = loadLocalRoleConfigFromQueryOrStorage();
+            return localRoleConfigCache;
+        }
 
         // 状态控制栏函数（用于测试）
         function setState(state, detail) {
@@ -4862,6 +4916,7 @@ function toggleBrokerPanel() {
                 const presenterBubble = presenterTopic
                     ? `正在讲解：${presenterTopic}`
                     : '正在讲解壁炉看板内容';
+                const sourceRoleId = String(role.bindRoleId || role.roleId || '').trim().toLowerCase();
                 return {
                     agentId: `team_role_${role.roleId}`,
                     name: role.name || String(role.roleId || '').toUpperCase(),
@@ -4870,8 +4925,10 @@ function toggleBrokerPanel() {
                     isTeamRole: true,
                     isPresenter,
                     roleId: role.roleId,
-                    avatar: skinByRole[role.roleId] || ROLE_SKIN_DEFAULTS[role.roleId] || 'guest_anim_1',
-                    roleSkinRow: skinRowsByRole[role.roleId] || null,
+                    bindRoleId: sourceRoleId,
+                    sourceRoleId,
+                    avatar: skinByRole[sourceRoleId] || ROLE_SKIN_DEFAULTS[sourceRoleId] || 'guest_anim_1',
+                    roleSkinRow: skinRowsByRole[sourceRoleId] || null,
                     bubbleText: isPresenter ? presenterBubble : (role.note || '')
                 };
             });
@@ -4960,20 +5017,25 @@ function toggleBrokerPanel() {
         }
 
         function teamRoleTag(roleId) {
+            const rid = String(roleId || '').toLowerCase();
+            if (rid.startsWith('local_')) return 'LOCAL';
             const tagMap = {
                 pm: 'PM',
                 builder: 'DEV',
                 reviewer: 'QA',
                 vbuilder: 'R-DEV'
             };
-            return tagMap[String(roleId || '').toLowerCase()] || 'AGENT';
+            return tagMap[rid] || 'AGENT';
         }
 
         function getSceneActorNameText(agent) {
             if (!agent || !agent.isTeamRole) return (agent && agent.name) || '访客';
             const st = stateLabel(normalizeState(agent.state || 'idle'));
+            const bindSuffix = (agent.bindRoleId && agent.bindRoleId !== agent.roleId)
+                ? `→${String(agent.bindRoleId || '').toUpperCase()}`
+                : '';
             const presenterSuffix = agent.isPresenter ? ' · 讲解中' : '';
-            return `${agent.name} [${teamRoleTag(agent.roleId)} · ${st}${presenterSuffix}]`;
+            return `${agent.name} [${teamRoleTag(agent.roleId)}${bindSuffix} · ${st}${presenterSuffix}]`;
         }
 
         function getComputerDropZoneRect(margin = 0) {
@@ -5124,7 +5186,28 @@ function toggleBrokerPanel() {
             first.classList.remove('flash');
             void first.offsetWidth; // restart animation
             first.classList.add('flash');
-            first.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function resolveRoleRouting(inputRoleId, preferredAgentId = '', preferredBackendRoleId = '') {
+            const selectedRoleId = String(inputRoleId || '').trim().toLowerCase();
+            const roles = normalizeTeamRoles(teamRoles);
+            const selectedRole = roles.find((r) => r.roleId === selectedRoleId) || null;
+            const backendRoleIdCandidate = String(preferredBackendRoleId || '').trim().toLowerCase();
+            const backendRoleId = backendRoleIdCandidate && TEAM_ROLE_ID_SET.has(backendRoleIdCandidate)
+                ? backendRoleIdCandidate
+                : (selectedRole && selectedRole.bindRoleId ? selectedRole.bindRoleId : selectedRoleId);
+            const backendRole = roles.find((r) => r.roleId === backendRoleId) || selectedRole || null;
+            const selectedRoleName = (selectedRole && selectedRole.name) || (selectedRoleId ? selectedRoleId.toUpperCase() : '未知角色');
+            const backendRoleName = (backendRole && backendRole.name) || (backendRoleId ? backendRoleId.toUpperCase() : selectedRoleName);
+            const selectedAgentId = String(preferredAgentId || (selectedRole && selectedRole.agentIdHint) || (selectedRoleId ? `team_role_${selectedRoleId}` : '')).trim();
+            return {
+                selectedRoleId,
+                selectedRoleName,
+                selectedAgentId,
+                backendRoleId,
+                backendRoleName,
+                backendRole,
+            };
         }
 
         function getNudgeOwners(triggerRoleId) {
@@ -5173,7 +5256,25 @@ function toggleBrokerPanel() {
                     updated_at: row.updated_at || byDefault[roleId].updated_at
                 };
             });
-            return defaults.map(d => byDefault[d.roleId] || d);
+            const merged = defaults.map(d => byDefault[d.roleId] || d);
+            const localRole = getLocalConfiguredRoleConfig();
+            if (localRole) {
+                const bound = merged.find((r) => r.roleId === localRole.bindRoleId) || byDefault[localRole.bindRoleId] || null;
+                const fallbackState = normalizeState((bound && bound.state) || 'idle');
+                const fallbackNote = (bound && bound.note) || '';
+                merged.push({
+                    roleId: localRole.roleId,
+                    bindRoleId: localRole.bindRoleId,
+                    isLocalConfig: true,
+                    agentIdHint: `team_role_${localRole.roleId}`,
+                    name: localRole.name,
+                    role: localRole.role,
+                    state: fallbackState,
+                    note: localRole.note || fallbackNote,
+                    updated_at: (bound && bound.updated_at) || new Date().toISOString(),
+                });
+            }
+            return merged;
         }
 
         function setSummaryStatusHint(text, type) {
@@ -5215,10 +5316,11 @@ function toggleBrokerPanel() {
             }, Math.max(1200, Number(durationMs) || 2200));
         }
 
-        function showTeamRoleHeadBubble(roleId, text, durationMs = ROLE_HEAD_BUBBLE_DURATION_MS) {
+        function showTeamRoleHeadBubble(roleId, text, durationMs = ROLE_HEAD_BUBBLE_DURATION_MS, opts = {}) {
             const rid = String(roleId || '').trim().toLowerCase();
             if (!rid || !game) return;
-            const agentId = `team_role_${rid}`;
+            const options = (opts && typeof opts === 'object') ? opts : {};
+            const agentId = String(options.agentId || '').trim() || `team_role_${rid}`;
             const g = guestSprites[agentId];
             if (!g || !g.sprite) return;
             if (guestBubbles[agentId]) {
@@ -5263,7 +5365,9 @@ function toggleBrokerPanel() {
 
         async function applyTeamRolePatch(roleId, patch) {
             const current = normalizeTeamRoles(teamRoles);
-            const idx = current.findIndex(r => r.roleId === roleId);
+            const route = resolveRoleRouting(roleId);
+            const backendRoleId = route.backendRoleId;
+            const idx = current.findIndex(r => r.roleId === backendRoleId);
             if (idx < 0) return;
 
             const next = { ...current[idx], ...patch, updated_at: new Date().toISOString() };
@@ -5274,7 +5378,7 @@ function toggleBrokerPanel() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        roleId: next.roleId,
+                        roleId: backendRoleId,
                         name: next.name,
                         role: next.role,
                         state: next.state,
@@ -5303,12 +5407,16 @@ function toggleBrokerPanel() {
 
         async function cycleTeamRoleState(roleId) {
             const roles = normalizeTeamRoles(teamRoles);
-            const role = roles.find(r => r.roleId === roleId);
+            const route = resolveRoleRouting(roleId);
+            const role = roles.find(r => r.roleId === route.backendRoleId);
             if (!role) return;
             const currentIdx = ROLE_STATE_SEQUENCE.indexOf(role.state);
             const nextState = ROLE_STATE_SEQUENCE[(currentIdx + 1) % ROLE_STATE_SEQUENCE.length];
-            await applyTeamRolePatch(roleId, { state: nextState });
-            setSummaryStatusHint(`${role.name} 切换为 ${stateLabel(nextState)}`, 'info');
+            await applyTeamRolePatch(route.backendRoleId, { state: nextState });
+            const targetLabel = route.selectedRoleId !== route.backendRoleId
+                ? `${route.selectedRoleName}→${route.backendRoleName}`
+                : route.backendRoleName;
+            setSummaryStatusHint(`${targetLabel} 切换为 ${stateLabel(nextState)}`, 'info');
         }
 
         function renderTeamRoleList() {
@@ -5324,6 +5432,10 @@ function toggleBrokerPanel() {
                 const state = normalizeState(role.state);
                 const stateText = stateLabel(state);
                 const updated = relativeTimeLabel(role.updated_at);
+                const isLocalConfigRole = !!role.isLocalConfig;
+                const switchControl = isLocalConfigRole
+                    ? `<span class="team-role-switch-btn" style="opacity:.72;cursor:default;">绑定 ${String(role.bindRoleId || '').toUpperCase()}</span>`
+                    : `<button class="team-role-switch-btn" onclick="cycleTeamRoleState('${role.roleId}')">切换状态</button>`;
                 return `
                     <div class="team-role-item" draggable="true" data-role-id="${role.roleId}" ondragstart="onTeamRoleDragStart(event,'${role.roleId}')" ondragend="onTeamRoleDragEnd(event)">
                         <div class="team-role-main">
@@ -5333,7 +5445,7 @@ function toggleBrokerPanel() {
                         </div>
                         <div class="team-role-side">
                             <span class="team-role-state-badge state-${state}">${stateText}</span>
-                            <button class="team-role-switch-btn" onclick="cycleTeamRoleState('${role.roleId}')">切换状态</button>
+                            ${switchControl}
                         </div>
                     </div>
                 `;
@@ -5437,21 +5549,25 @@ function toggleBrokerPanel() {
         }
 
         async function triggerOneClickSummary(triggerRoleId, opts = {}) {
-            const rid = String(triggerRoleId || '').trim().toLowerCase();
+            const options = (opts && typeof opts === 'object') ? opts : {};
+            const route = resolveRoleRouting(triggerRoleId, options.selectedAgentId, options.backendRoleIdHint);
+            const rid = route.backendRoleId;
             if (!rid) {
                 setSummaryStatusHint('未识别到角色，请重新拖拽到电脑前', 'warn');
                 setSummaryRetryButton(false);
                 return;
             }
-            const options = (opts && typeof opts === 'object') ? opts : {};
             const windowHours = Math.max(1, Math.min(168, Number(options.windowHours) || 24));
             const bubbleDurationMs = Math.max(1200, Number(options.bubbleDurationMs) || ROLE_HEAD_BUBBLE_DURATION_MS);
-            lastSummaryTriggerRoleId = rid;
+            lastSummaryTriggerRoleId = route.selectedRoleId || rid;
             const roles = normalizeTeamRoles(teamRoles);
-            const triggerRole = roles.find(r => r.roleId === rid);
+            const triggerRole = roles.find(r => r.roleId === rid) || route.backendRole || null;
             summaryRetryInFlight = true;
             setSummaryRetryButton(false);
-            setSummaryStatusHint(`正在总结过去 ${windowHours} 小时工作日志（连接远端服务）...`, 'info');
+            const routeLabel = route.selectedRoleId && route.selectedRoleId !== rid
+                ? `${route.selectedRoleName}→${route.backendRoleName}`
+                : route.backendRoleName;
+            setSummaryStatusHint(`正在总结过去 ${windowHours} 小时工作日志（${routeLabel}，连接远端服务）...`, 'info');
 
             let summaryText = '';
             let summaryMode = 'role-daily-v1';
@@ -5476,26 +5592,27 @@ function toggleBrokerPanel() {
                 console.warn('one-click-summary API failed, fallback role-only summary:', e);
             }
 
-            const triggerName = triggerRole ? triggerRole.name : String(rid || '').toUpperCase();
+            const triggerName = route.selectedRoleName || (triggerRole ? triggerRole.name : String(rid || '').toUpperCase());
             const summaryTitle = getRoleSummaryTitle(rid, triggerName);
             let finalSummaryText = summaryText.startsWith('【') ? summaryText : `${summaryTitle}\n${summaryText}`;
+            const routeNote = `[通信路由：selected=${route.selectedRoleId || rid} (${route.selectedRoleName || triggerName}) -> trigger=${rid} (${route.backendRoleName || triggerName}) | agent=${route.selectedAgentId || 'n/a'}]`;
             if (usedFallback) {
-                finalSummaryText = `${finalSummaryText}\n\n[连接失败，当前显示本地兜底总结；可点击“重试”再次请求远端。]`;
+                finalSummaryText = `${finalSummaryText}\n\n${routeNote}\n[连接失败，当前显示本地兜底总结；可点击“重试”再次请求远端。]`;
             } else {
-                finalSummaryText = `${finalSummaryText}\n\n[来源：远端总结服务]`;
+                finalSummaryText = `${finalSummaryText}\n\n${routeNote}\n[来源：远端总结服务]`;
             }
             setSummaryContent(finalSummaryText);
             const nowText = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             if (usedFallback) {
-                setSummaryStatusHint(`连接失败，已显示兜底总结（${triggerName}）。请点“重试”`, 'warn');
+                setSummaryStatusHint(`连接失败，已显示兜底总结（${routeLabel}）。请点“重试”`, 'warn');
                 setSummaryRetryButton(true);
                 showSummaryBubble(`${triggerName} 总结请求失败，可重试`, bubbleDurationMs);
-                showTeamRoleHeadBubble(rid, '连接失败，可重试', bubbleDurationMs);
+                showTeamRoleHeadBubble(route.selectedRoleId || rid, '连接失败，可重试', bubbleDurationMs, { agentId: route.selectedAgentId });
             } else {
-                setSummaryStatusHint(`${triggerName} 于 ${nowText} 总结成功`, 'ok');
+                setSummaryStatusHint(`${routeLabel} 于 ${nowText} 总结成功`, 'ok');
                 setSummaryRetryButton(false);
                 showSummaryBubble(`${triggerName} 过去 ${windowHours} 小时总结已生成`, bubbleDurationMs);
-                showTeamRoleHeadBubble(rid, '24h总结已生成', bubbleDurationMs);
+                showTeamRoleHeadBubble(route.selectedRoleId || rid, '24h总结已生成', bubbleDurationMs, { agentId: route.selectedAgentId });
             }
 
             // 强一致：同一个函数同时写 Summary + Yesterday Notes 本地 DOM。
@@ -5510,6 +5627,8 @@ function toggleBrokerPanel() {
                     body: JSON.stringify({
                         summary: finalSummaryText,
                         triggerRoleId: rid,
+                        selectedRoleId: route.selectedRoleId || rid,
+                        selectedAgentId: route.selectedAgentId || '',
                         roles,
                         mode: usedFallback ? `frontend-role-daily-fallback-v1:${summaryError}` : `ui-sync-${summaryMode}`
                     })
@@ -5531,20 +5650,24 @@ function toggleBrokerPanel() {
             await triggerOneClickSummary(lastSummaryTriggerRoleId, { windowHours: 24, bubbleDurationMs: ROLE_HEAD_BUBBLE_DURATION_MS });
         }
 
-        async function triggerBedInterrupt(roleId) {
-            const rid = String(roleId || '').trim().toLowerCase();
+        async function triggerBedInterrupt(roleId, opts = {}) {
+            const options = (opts && typeof opts === 'object') ? opts : {};
+            const route = resolveRoleRouting(roleId, options.selectedAgentId, options.backendRoleIdHint);
+            const rid = route.backendRoleId;
             if (!rid) return;
             const roles = normalizeTeamRoles(teamRoles);
             const role = roles.find(r => r.roleId === rid);
-            const roleName = (role && role.name) || rid.toUpperCase();
+            const roleName = route.selectedRoleName || (role && role.name) || rid.toUpperCase();
             const nowLabel = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             const waitingNote = `已停止当前工作，等待最新输入（${nowLabel}）`;
             await applyTeamRolePatch(rid, { state: 'idle', note: waitingNote });
-            const msg = `【${roleName} 床位中断】已停止当前工作，进入等待新输入状态。`;
-            setSummaryStatusHint(`${roleName} 已进入等待输入状态`, 'ok');
+            const routeNote = `[通信路由：selected=${route.selectedRoleId || rid} -> trigger=${rid} | agent=${route.selectedAgentId || 'n/a'}]`;
+            const msg = `【${roleName} 床位中断】已停止当前工作，进入等待新输入状态。\n${routeNote}`;
+            const routeLabel = route.selectedRoleId && route.selectedRoleId !== rid ? `${route.selectedRoleName}→${route.backendRoleName}` : roleName;
+            setSummaryStatusHint(`${routeLabel} 已进入等待输入状态`, 'ok');
             setSummaryContent(msg);
             showSummaryBubble(`${roleName} 已停止当前工作`, ROLE_HEAD_BUBBLE_DURATION_MS);
-            showTeamRoleHeadBubble(rid, '已停下，等待新输入', ROLE_HEAD_BUBBLE_DURATION_MS);
+            showTeamRoleHeadBubble(route.selectedRoleId || rid, '已停下，等待新输入', ROLE_HEAD_BUBBLE_DURATION_MS, { agentId: route.selectedAgentId });
             prependSummaryToMemo(msg, roleName, `【${roleName} 床位中断】`);
             flashLatestSummaryInMemo();
             try {
@@ -5554,6 +5677,8 @@ function toggleBrokerPanel() {
                     body: JSON.stringify({
                         summary: msg,
                         triggerRoleId: rid,
+                        selectedRoleId: route.selectedRoleId || rid,
+                        selectedAgentId: route.selectedAgentId || '',
                         roles: normalizeTeamRoles(teamRoles),
                         mode: 'bed-interrupt-v1'
                     })
@@ -5563,12 +5688,14 @@ function toggleBrokerPanel() {
             }
         }
 
-        async function triggerServerRoomSelfCheck(roleId) {
-            const rid = String(roleId || '').trim().toLowerCase();
+        async function triggerServerRoomSelfCheck(roleId, opts = {}) {
+            const options = (opts && typeof opts === 'object') ? opts : {};
+            const route = resolveRoleRouting(roleId, options.selectedAgentId, options.backendRoleIdHint);
+            const rid = route.backendRoleId;
             if (!rid) return;
             const roles = normalizeTeamRoles(teamRoles);
             const role = roles.find(r => r.roleId === rid);
-            const roleName = (role && role.name) || rid.toUpperCase();
+            const roleName = route.selectedRoleName || (role && role.name) || rid.toUpperCase();
             const nudged = getNudgeOwners(rid);
             const nowLabel = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             const reflectState = role && role.state === 'error' ? 'error' : 'researching';
@@ -5586,11 +5713,13 @@ function toggleBrokerPanel() {
             if (nudged.length > 0) {
                 lines.push(`催办对象：${nudged.join('、')}`);
             }
+            lines.push(`[通信路由：selected=${route.selectedRoleId || rid} -> trigger=${rid} | agent=${route.selectedAgentId || 'n/a'}]`);
             const summary = lines.join('\n');
-            setSummaryStatusHint(`${roleName} 已完成机房自检`, nudged.length > 0 ? 'warn' : 'ok');
+            const routeLabel = route.selectedRoleId && route.selectedRoleId !== rid ? `${route.selectedRoleName}→${route.backendRoleName}` : roleName;
+            setSummaryStatusHint(`${routeLabel} 已完成机房自检`, nudged.length > 0 ? 'warn' : 'ok');
             setSummaryContent(summary);
             showSummaryBubble(`${roleName} 已完成机房自检`, ROLE_HEAD_BUBBLE_DURATION_MS);
-            showTeamRoleHeadBubble(rid, nudged.length > 0 ? `发现阻塞，催 ${nudged.length} 位` : '未发现重大阻塞', ROLE_HEAD_BUBBLE_DURATION_MS);
+            showTeamRoleHeadBubble(route.selectedRoleId || rid, nudged.length > 0 ? `发现阻塞，催 ${nudged.length} 位` : '未发现重大阻塞', ROLE_HEAD_BUBBLE_DURATION_MS, { agentId: route.selectedAgentId });
             prependSummaryToMemo(summary, roleName, `【${roleName} 机房自检】`);
             flashLatestSummaryInMemo();
             try {
@@ -5600,6 +5729,8 @@ function toggleBrokerPanel() {
                     body: JSON.stringify({
                         summary,
                         triggerRoleId: rid,
+                        selectedRoleId: route.selectedRoleId || rid,
+                        selectedAgentId: route.selectedAgentId || '',
                         roles: normalizeTeamRoles(teamRoles),
                         mode: 'server-room-self-check-v1'
                     })
@@ -6367,6 +6498,7 @@ function toggleBrokerPanel() {
                         game.input.setDraggable(sprite, true);
                         sprite.__teamRoleId = agent.roleId;
                         sprite.__teamAgentId = id;
+                        sprite.__backendRoleId = agent.sourceRoleId || agent.roleId;
                     }
 
                     guestSprites[id] = {
@@ -6420,6 +6552,9 @@ function toggleBrokerPanel() {
                     g.isPresenter = !!agent.isPresenter;
                     g.roleId = agent.roleId || g.roleId || null;
                     g.state = normalizeState(agent.state || 'idle');
+                    if (g.isTeamRole && g.sprite) {
+                        g.sprite.__backendRoleId = agent.sourceRoleId || agent.roleId || g.sprite.__backendRoleId;
+                    }
                     g.nameText.setText(getSceneActorNameText(agent));
                     if (g.isTeamRole && g.nameText && g.nameText.setColor) {
                         g.nameText.setColor(stateColor(g.state));
@@ -7290,9 +7425,13 @@ function toggleBrokerPanel() {
                     y: Number.isFinite(pointer.worldY) ? pointer.worldY : gameObject.y
                 };
                 draggingRoleId = gameObject.__teamRoleId;
+                const route = resolveRoleRouting(gameObject.__teamRoleId, gameObject.__teamAgentId, gameObject.__backendRoleId);
                 dragDropTriggered = false;
                 setSummaryDropzoneVisible(true, { acceptCardDrop: false });
-                setSummaryStatusHint('拖动像素人到电脑/床/机房区域触发对应动作', 'info');
+                const routeLabel = route.selectedRoleId && route.selectedRoleId !== route.backendRoleId
+                    ? `${route.selectedRoleName}→${route.backendRoleName}`
+                    : route.selectedRoleName;
+                setSummaryStatusHint(`拖动像素人到电脑/床/机房区域触发动作（${routeLabel}）`, 'info');
                 gameObject.setDepth(3001);
                 const rec = guestSprites[gameObject.__teamAgentId];
                 if (rec && rec.nameText) rec.nameText.setDepth(3002);
@@ -7331,6 +7470,7 @@ function toggleBrokerPanel() {
                 if (!gameObject || !gameObject.__teamRoleId) return;
                 const roleId = gameObject.__teamRoleId;
                 const agentId = gameObject.__teamAgentId;
+                const backendRoleId = String(gameObject.__backendRoleId || '').trim().toLowerCase();
                 const px = Number.isFinite(pointer.worldX) ? pointer.worldX : lastPointerWorld.x;
                 const py = Number.isFinite(pointer.worldY) ? pointer.worldY : lastPointerWorld.y;
                 const hitComputer = isComputerDropHit(px, py, gameObject);
@@ -7346,19 +7486,24 @@ function toggleBrokerPanel() {
                 renderGuestAgentsInScene();
                 if (hitComputer) {
                     dragDropTriggered = true;
-                    triggerOneClickSummary(roleId, { windowHours: 24, bubbleDurationMs: ROLE_HEAD_BUBBLE_DURATION_MS }).catch((e) => {
+                    triggerOneClickSummary(roleId, {
+                        windowHours: 24,
+                        bubbleDurationMs: ROLE_HEAD_BUBBLE_DURATION_MS,
+                        selectedAgentId: agentId,
+                        backendRoleIdHint: backendRoleId
+                    }).catch((e) => {
                         console.error('triggerOneClickSummary failed:', e);
                         setSummaryStatusHint('触发失败，请重试（可拖到电脑屏幕/桌面高亮区域）', 'warn');
                     });
                 } else if (hitBed) {
                     dragDropTriggered = true;
-                    triggerBedInterrupt(roleId).catch((e) => {
+                    triggerBedInterrupt(roleId, { selectedAgentId: agentId, backendRoleIdHint: backendRoleId }).catch((e) => {
                         console.error('triggerBedInterrupt failed:', e);
                         setSummaryStatusHint('床位中断失败，请重试', 'warn');
                     });
                 } else if (hitServerRoom) {
                     dragDropTriggered = true;
-                    triggerServerRoomSelfCheck(roleId).catch((e) => {
+                    triggerServerRoomSelfCheck(roleId, { selectedAgentId: agentId, backendRoleIdHint: backendRoleId }).catch((e) => {
                         console.error('triggerServerRoomSelfCheck failed:', e);
                         setSummaryStatusHint('机房自检失败，请重试', 'warn');
                     });
