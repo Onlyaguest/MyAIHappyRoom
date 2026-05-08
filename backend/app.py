@@ -1032,16 +1032,30 @@ def save_one_click_summaries(payload):
         json.dump({"items": trimmed}, f, ensure_ascii=False, indent=2)
 
 
-def append_one_click_summary(summary, trigger_role_id="", roles=None, mode="rule-based-v1"):
+def append_one_click_summary(
+    summary,
+    trigger_role_id="",
+    roles=None,
+    mode="rule-based-v1",
+    selected_role_id="",
+    selected_agent_id="",
+):
     clean_summary = sanitize_content(str(summary or "").strip())
     if not clean_summary:
         return
     roles = roles if isinstance(roles, list) else []
+    trigger_role_id = str(trigger_role_id or "").strip().lower()
+    selected_role_id = str(selected_role_id or "").strip().lower() or trigger_role_id
+    selected_agent_id = str(selected_agent_id or "").strip() or (
+        f"team_role_{selected_role_id}" if selected_role_id else ""
+    )
     payload = load_one_click_summaries()
     items = payload.get("items") if isinstance(payload.get("items"), list) else []
     items.append({
         "summary": clean_summary,
-        "triggerRoleId": str(trigger_role_id or "").strip().lower(),
+        "selectedRoleId": selected_role_id,
+        "triggerRoleId": trigger_role_id,
+        "selectedAgentId": selected_agent_id,
         "generated_at": datetime.now().isoformat(),
         "mode": str(mode or "").strip() or "rule-based-v1",
         "roles": roles,
@@ -1058,13 +1072,16 @@ def _format_recent_summaries_for_memo(limit=2):
     lines = ["【一键总结】"]
     for row in reversed(chosen):
         ts = str(row.get("generated_at") or "").strip()
+        selected_role = str(row.get("selectedRoleId") or "").strip().lower()
         role = str(row.get("triggerRoleId") or "").strip().lower() or "unknown"
+        agent_id = str(row.get("selectedAgentId") or "").strip()
         try:
             ts_fmt = datetime.fromisoformat(ts).strftime("%Y-%m-%d %H:%M")
         except Exception:
             ts_fmt = ts or datetime.now().strftime("%Y-%m-%d %H:%M")
-        role_label = {"pm": "PM", "builder": "Builder", "reviewer": "Reviewer"}.get(role, role)
-        lines.append(f"—— {ts_fmt} · 触发者 {role_label} ——")
+        role_label = {"pm": "PM", "builder": "Builder", "reviewer": "Reviewer", "vbuilder": "vBuilder"}.get(role, role)
+        selected_label = selected_role or role
+        lines.append(f"—— {ts_fmt} · 触发者 {selected_label} -> {role_label} ({agent_id or 'n/a'}) ——")
         lines.append(sanitize_content(str(row.get("summary") or "").strip()))
         lines.append("")
     return "\n".join(lines).strip()
@@ -2076,6 +2093,8 @@ def one_click_summary():
             "error": "异常中",
         }
         trigger_role_id = str(data.get("triggerRoleId") or "").strip().lower()
+        selected_role_id = str(data.get("selectedRoleId") or "").strip().lower() or trigger_role_id
+        selected_agent_id = str(data.get("selectedAgentId") or "").strip()
         try:
             window_hours = int(data.get("windowHours") or 24)
         except Exception:
@@ -2168,7 +2187,14 @@ def one_click_summary():
 
         persist = bool(data.get("persist", True))
         if persist:
-            append_one_click_summary(summary, trigger_role_id=trigger_role_id, roles=roles, mode=mode)
+            append_one_click_summary(
+                summary,
+                trigger_role_id=trigger_role_id,
+                selected_role_id=selected_role_id,
+                selected_agent_id=selected_agent_id,
+                roles=roles,
+                mode=mode,
+            )
         return jsonify({
             "ok": True,
             "mode": mode,
@@ -2190,9 +2216,18 @@ def record_one_click_summary():
         if not summary:
             return jsonify({"ok": False, "msg": "missing summary"}), 400
         trigger_role_id = str(data.get("triggerRoleId") or "").strip().lower()
+        selected_role_id = str(data.get("selectedRoleId") or "").strip().lower() or trigger_role_id
+        selected_agent_id = str(data.get("selectedAgentId") or "").strip()
         roles = data.get("roles") if isinstance(data.get("roles"), list) else []
         mode = str(data.get("mode") or "").strip() or "frontend-fallback-v1"
-        append_one_click_summary(summary, trigger_role_id=trigger_role_id, roles=roles, mode=mode)
+        append_one_click_summary(
+            summary,
+            trigger_role_id=trigger_role_id,
+            selected_role_id=selected_role_id,
+            selected_agent_id=selected_agent_id,
+            roles=roles,
+            mode=mode,
+        )
         return jsonify({"ok": True, "recorded_at": datetime.now().isoformat()})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
